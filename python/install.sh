@@ -2,7 +2,7 @@
 #
 # Gemma Genie installer — bootstraps everything on a fresh machine.
 #
-#   curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/python/install.sh | bash
 #
 # Idempotent: safe to re-run. If you delete ~/.genie (the vector cache) or are on
 # a brand-new laptop, re-running this brings everything back, including the
@@ -12,6 +12,7 @@
 #   GENIE_INSTALL_DIR   where the scripts live   (default: ~/.local/share/genie)
 #   GENIE_BIN_DIR       where the `genie` link goes (default: ~/.local/bin, then /usr/local/bin)
 #   GENIE_RAW_BASE      raw URL to fetch files from when piped via curl
+#   GENIE_RAW_SUBDIR    repo subdir holding the scripts (default: python; "" = root)
 #   HF_HOME             HuggingFace cache root (default: ~/.cache/huggingface) — all models go here
 #   GENIE_SKIP_MODELS=1 skip downloading the (large) Gemma weights
 #   GENIE_SKIP_PREWARM=1 skip all pre-downloads (deps still install)
@@ -20,6 +21,10 @@ set -euo pipefail
 
 INSTALL_DIR="${GENIE_INSTALL_DIR:-$HOME/.local/share/genie}"
 RAW_BASE="${GENIE_RAW_BASE:-https://raw.githubusercontent.com/sbmandava/gemma-genie/main}"
+# Subdirectory in the repo holding the runtime scripts. The bash+Python
+# implementation now lives in python/; remote fetches try here first, then the
+# repo root (legacy layout). Override with GENIE_RAW_SUBDIR= (empty for root).
+RAW_SUBDIR="${GENIE_RAW_SUBDIR-python}"
 CACHE_DIR="$HOME/.genie"
 # Pin the litert-lm runtime so uvx resolves a known-good version.
 LITERT_VERSION="0.13.1"
@@ -115,7 +120,10 @@ fetch() {  # fetch <filename>
     if [ -n "$SRC_DIR" ] && [ -f "$SRC_DIR/$1" ]; then
         cp "$SRC_DIR/$1" "$INSTALL_DIR/$1"
     else
-        curl -fsSL "$RAW_BASE/$1" -o "$INSTALL_DIR/$1"
+        # Remote: try the new python/ layout first, then the legacy repo-root
+        # path, so this works whether or not the repo has been restructured.
+        curl -fsSL "$RAW_BASE/$RAW_SUBDIR/$1" -o "$INSTALL_DIR/$1" \
+          || curl -fsSL "$RAW_BASE/$1" -o "$INSTALL_DIR/$1"
     fi
 }
 fetch genie

@@ -16,7 +16,8 @@ crate (noted below). Always check the repo first.
 
 | Dependency | Local Rust source | crate | Use |
 |---|---|---|---|
-| **lancedb** | `/opt/projects/unovie/research/lancedb/rust/lancedb` (v0.30.1-beta.2, repo @ `python-v0.33.1-beta.2`) | `lancedb` | **Path dep to local source.** |
+| **lancedb** | `/opt/projects/unovie/research/lancedb/rust/lancedb` (v0.30.1-beta.2, repo @ `python-v0.33.1-beta.2`) | `lancedb` | **Path dep to local source.** Its workspace pulls the `lance*` core crates via **git** — override to the local `lance` clone (next row) with `[patch."https://github.com/lance-format/lance.git"]` in the workspace root, else Cargo git-fetches at build. |
+| **lance (core)** | `/opt/projects/unovie/research/lance` (checked out at tag `v8.0.0-beta.6`; crates under `rust/lance*`) | `lance`, `lance-core`, `lance-io`, … | Required by `lancedb`. Keep it on tag **`v8.0.0-beta.6`** (matches lancedb's pin). Used via the `[patch]` override above. |
 | **liteparse** | `/opt/projects/unovie/research/liteparse/crates/liteparse` (v2.0.6) | `liteparse` | **Path dep to local source.** |
 | **ladybug / lbug** | `/opt/projects/unovie/research/ladybug-rust` (crate `lbug` v0.17.0) — standalone clone. Its `build.rs` builds the C++ engine via **CMake**, using the sibling C++ source `/opt/projects/unovie/research/ladybug` (present, repo @ `v0.17.1`) if found, else downloading it. | `lbug` | **Path dep to local source.** Needs `cmake` + a C++ toolchain on the build host. |
 | **model2vec** | `/opt/projects/unovie/research/model2vec-rs` (v0.2.1, repo @ `v0.2.1`) — the Rust port. (`/opt/projects/unovie/research/model2vec` is the separate Python repo.) | `model2vec-rs` | **Path dep to local source.** Inference-only (fine — genie only encodes). |
@@ -24,6 +25,19 @@ crate (noted below). Always check the repo first.
 
 Quick check before depending on any of these:
 `find /opt/projects/unovie/research/<repo> -name Cargo.toml -not -path '*/target/*'`
+
+### Native build prerequisites (system tools/libs, not repos)
+
+- **CMake + C++ toolchain** — `lbug`'s `build.rs` CMake-builds the ladybug C++
+  engine (from sibling `research/ladybug`); also needed if `liteparse` builds
+  Tesseract from source.
+- **PDFium** — `liteparse`'s `pdfium-sys` (`links = "pdfium"`) needs the PDFium
+  native lib at link time (its build script fetches/expects a prebuilt binary).
+- **Tesseract + Leptonica** — `liteparse` enables the `tesseract` feature by
+  default (`build-tesseract` compiles them) for image OCR. Disable the feature if
+  OCR isn't needed.
+- **litert-lm runtime** — v1 subprocesses the prebuilt binary (already at
+  `~/.local/bin/litert-lm`); no build needed unless pursuing FFI (M6).
 
 ## Behaviour parity & on-disk caches
 

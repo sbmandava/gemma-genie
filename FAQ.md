@@ -265,6 +265,20 @@ indexed in the last 24h. Everything runs locally.
 
 ---
 
+### Are you fine-tuning the model?
+
+**Not right now** — but it's firmly on the roadmap. Gemma Genie is currently
+**laying the foundation**: a clean, private, on-device pipeline (model +
+vector memory + knowledge graph) that just works. Fine-tuning and personalization
+are intended for **upcoming releases**.
+
+With enough user interest on this topic, we plan to add those features while
+continuing to optimize the underlying system toward a more **deterministic,
+agentic system** — one that learns from your data and behaves predictably, all
+on the edge.
+
+---
+
 ### Is it built on Ollama or llama.cpp?
 
 **No.** Gemma Genie runs on **Google's LiteRT-LM** — the on-device LLM runtime

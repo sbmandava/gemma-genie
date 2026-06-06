@@ -179,22 +179,22 @@ def ingest_dir(db, name, root, recursive, model, existing, chunk_size=1000):
     root = os.path.abspath(root)
 
     # Map of relative path -> (abs path, signature) for supported files only.
-    current = {}
+    current = {}  # absolute path -> signature
     for p in walk_files(root, recursive):
         ext = os.path.splitext(p)[1].lower()
         if ext in TEXT_EXTS or ext in DOC_EXTS:
-            current[os.path.relpath(p, root)] = (p, file_sig(p))
+            current[os.path.abspath(p)] = file_sig(p)
 
-    def chunks_for(rel, abspath, sig):
+    def chunks_for(path, sig):
         rows = []
-        for c in chunk_text(extract_file(abspath) or "", max_chars=chunk_size):
-            rows.append({"source": rel, "sig": sig, "text": c})
+        for c in chunk_text(extract_file(path) or "", max_chars=chunk_size):
+            rows.append({"source": path, "sig": sig, "text": c})
         return rows
 
     if name not in existing:
         rows = []
-        for rel, (p, sig) in current.items():
-            rows.extend(chunks_for(rel, p, sig))
+        for path, sig in current.items():
+            rows.extend(chunks_for(path, sig))
         if not rows:
             return None, (0, 0, 0)
         vecs = model.encode([r["text"] for r in rows])
@@ -208,16 +208,15 @@ def ingest_dir(db, name, root, recursive, model, existing, chunk_size=1000):
     for s, g in zip(arrow.column("source").to_pylist(), arrow.column("sig").to_pylist()):
         existing_sig[s] = g
 
-    changed = [rel for rel, (_, sig) in current.items() if existing_sig.get(rel) != sig]
+    changed = [path for path, sig in current.items() if existing_sig.get(path) != sig]
     removed = [s for s in existing_sig if s not in current]
 
     for s in set(changed) | set(removed):
         table.delete(f"source = '{_sql_quote(s)}'")
 
     add_rows = []
-    for rel in changed:
-        p, sig = current[rel]
-        add_rows.extend(chunks_for(rel, p, sig))
+    for path in changed:
+        add_rows.extend(chunks_for(path, current[path]))
     if add_rows:
         vecs = model.encode([r["text"] for r in add_rows])
         table.add([{**add_rows[i], "vector": vecs[i].tolist()} for i in range(len(add_rows))])
@@ -234,6 +233,7 @@ def main():
                     help="with --dir, descend into subdirectories")
     ap.add_argument("--search-all", action="store_true", dest="search_all",
                     help="search every cached table (no ingestion) for --query")
+    ap.add_argument("--source", help="source path stored with single-doc chunks")
     ap.add_argument("--query", required=True)
     ap.add_argument("--top-k", type=int, default=6)
     ap.add_argument("--chunk-size", type=int, default=1000,
@@ -295,8 +295,9 @@ def main():
         text = sys.stdin.read()
         chunks = chunk_text(text, max_chars=args.chunk_size)
         vectors = model.encode(chunks)
+        src = args.source or "(stdin)"
         rows = [
-            {"id": i, "text": c, "vector": vectors[i].tolist()}
+            {"id": i, "source": src, "text": c, "vector": vectors[i].tolist()}
             for i, c in enumerate(chunks)
         ]
         table = db.create_table(name, data=rows)

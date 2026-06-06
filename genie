@@ -247,6 +247,24 @@ run_graph() {
         --db "$GRAPH_DB" --ttl "$RAG_TTL" "$@"
 }
 
+abspath_of() {  # absolute path of a (possibly relative) file path
+    local p="$1"
+    [[ "$p" == /* ]] && { printf '%s' "$p"; return; }
+    printf '%s' "$(cd "$(dirname "$p")" 2>/dev/null && pwd)/$(basename "$p")"
+}
+
+# Print a "Sources:" footer listing unique source paths found in retrieved
+# context (lines marked "[source: <path>]").
+print_sources() {
+    local ctx="$1" srcs
+    srcs=$(printf '%s\n' "$ctx" | grep -oE '\[source: [^]]+\]' \
+        | sed -E 's/^\[source: (.*)\]$/\1/' | awk '!seen[$0]++')
+    if [[ -n "$srcs" ]]; then
+        printf '\nSources:\n'
+        while IFS= read -r s; do [[ -n "$s" ]] && printf '  - %s\n' "$s"; done <<< "$srcs"
+    fi
+}
+
 # Pick the compute backend: honor GEMMA_BACKEND, else use the cached choice,
 # else probe the GPU once (fall back to CPU if it fails) and cache the result.
 resolve_backend() {
@@ -430,6 +448,7 @@ Use the following excerpts from files in \"$dir_path\" to answer
 
 $context"
             "${LITERT_RUN[@]}" --backend="$BACKEND" --prompt="$prompt"
+            print_sources "$context"
             # Auto-update the correlation graph in the BACKGROUND (LLM extraction
             # for directories is slow on first build; detach so the answer is
             # not blocked). Progress is logged to GRAPH_LOG.
@@ -456,7 +475,10 @@ $context"
             extracted="$STDIN_TEXT"
         fi
 
+        src_footer=""   # context (or marker) used to print the Sources: footer
         if [[ -n "$src" ]]; then
+            # Full source path that gets stored and shown.
+            if [[ $from_stdin -eq 1 ]]; then src_disp="(stdin)"; else src_disp="$(abspath_of "$src")"; fi
             if [[ ${#extracted} -gt $RAG_THRESHOLD_CHARS ]]; then
                 # Large input: retrieve only the relevant chunks via LanceDB.
                 mkdir -p "$(dirname "$RAG_DB")"
@@ -470,21 +492,24 @@ $context"
                     python "$RAG_HELPER" \
                     --db "$RAG_DB" \
                     --cache-key "$cache_key" \
+                    --source "$src_disp" \
                     --query "$arg" \
                     --top-k "$RAG_TOPK" \
                     --ttl "$RAG_TTL" \
                     ${rag_extra[@]+"${rag_extra[@]}"})"
                 prompt="$arg
 
-Use the following excerpts from \"$(basename "$src")\" to answer:
+Use the following excerpts from \"$src_disp\" to answer:
 
 $context"
+                src_footer="$context"
             else
                 prompt="$arg
 
-Analyze the following document (\"$(basename "$src")\"):
+Analyze the following document (\"$src_disp\"):
 
 $extracted"
+                src_footer="[source: $src_disp]"
             fi
         elif [[ $inputs -eq 0 && $from_stdin -eq 0 ]]; then
             # Bare --ask: automatically consult data ingested in the last 24h
@@ -512,12 +537,14 @@ $graph_ctx}
 ${kb_ctx:+
 Document excerpts:
 $kb_ctx}"
+                src_footer="$kb_ctx"
             fi
         fi
 
         "${LITERT_RUN[@]}" \
             --backend="$BACKEND" \
             --prompt="$prompt"
+        print_sources "$src_footer"
 
         # Auto-update the correlation graph for single files (heuristic, fast),
         # in the background so the answer isn't blocked.

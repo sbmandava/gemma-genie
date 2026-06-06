@@ -13,19 +13,10 @@ two pieces of Google innovation:
   using your GPU when available
   ([overview](https://developers.google.com/edge/litert-lm/overview)).
 
-**Why business users care:**
-
-- **Confidential by design.** Contracts, financials, HR files, board decks —
-  ask questions about them without a single byte leaving your laptop.
-- **Works on a plane, in a vault, or behind an air-gap.** After the one-time
-  setup, there's no network dependency.
-- **No per-question cost, no rate limits, no vendor lock-in.** Run it as much as
-  you like.
-- **It reads your real files.** PDFs, Word, Excel, PowerPoint, folders of
-  documents — and answers in plain language, citing the source file.
-
-Think of it as a private analyst that has read all your documents and never
-sends them anywhere.
+In short: a **private analyst that has read all your documents and never sends
+them anywhere.** It reads your real files (PDF, Word, Excel, PowerPoint, whole
+folders), answers in plain language **with sources**, runs on a plane or behind
+an air-gap, and costs **nothing per question**.
 
 ---
 
@@ -163,14 +154,19 @@ firewall — with nothing sent anywhere.
 
 **$0 per question.** No subscription, no per-token API bills, no usage metering.
 The only cost is the laptop you already own plus a one-time model download.
-Compare that to cloud pricing that grows with every employee and every query.
 
-### "Is it private enough for client or regulated data?"
+And here's the part founders should plan for: **token costs are heading up, not
+down.** As AI gets woven into every feature, per-token API spend becomes a
+**variable cost that scales with your usage and your users** — great for the
+provider, brutal for your margins and your roadmap. If your product's
+intelligence lives behind someone's meter, **every new feature is a new bill**
+and your unit economics are hostage to their pricing.
 
-Your files never leave the device — no third-party processor, no external
-data-retention policy in the loop. That makes it a natural fit for NDAs, client-
-confidential material, legal/financial/health documents, and air-gapped setups.
-(You're still responsible for your own device security.)
+**Offline Edge AI flips that.** The cost is fixed (the device), the model is
+yours to ship, and you can **build, iterate, and demo features for free** — even
+offline. For startups, on-device intelligence isn't just cheaper; it's a
+**strategic moat for product innovation**: no rate limits to design around, no
+data-sharing to negotiate, and no surprise invoice when a feature goes viral.
 
 ### "When would I still want a cloud model (OpenAI / Gemini)?"
 
@@ -282,16 +278,6 @@ The **only** network usage is:
 - a **once-per-24h version check** against the public GitHub repo (just to
   auto-upgrade the scripts — your data is never sent). Disable it with
   `GENIE_NO_UPDATE=1`.
-
----
-
-### Will it work without a network — e.g. on an airplane?
-
-**Yes.** Once the one-time install has completed and the models are cached,
-`genie` works fully offline — no Wi-Fi required. The 24h update check simply
-fails silently when there's no connection and doesn't affect answering.
-
-If you want zero network attempts at all, set `GENIE_NO_UPDATE=1`.
 
 ---
 
@@ -457,10 +443,3 @@ GENIE_MODEL=e4b genie --ask "..." # force the stronger model
 GENIE_BACKEND=cpu genie --ask ... # force CPU
 genie doctor                      # show detected backend + default model + RAM
 ```
-
----
-
-### Is it really free / private?
-
-Yes. Open-source models, run locally, no API keys, no per-query cost, and your
-content stays on your machine. See [README](README.md) for details.

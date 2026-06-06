@@ -24,6 +24,8 @@ done
 RAG_THRESHOLD_CHARS="${GEMMA_RAG_THRESHOLD:-14000}"   # ~3500 tokens
 RAG_TOPK="${GEMMA_RAG_TOPK:-6}"
 RAG_TTL="${GEMMA_CACHE_TTL:-86400}"   # evict cached tables idle >24h
+CHUNK_SIZE="${GEMMA_CHUNK_SIZE:-}"    # chars per chunk (empty = helper default)
+VERSION="0.2.0"
 
 # All models (Gemma weights + the model2vec embedder) live in the HuggingFace
 # hub cache: ${HF_HOME:-$HOME/.cache/huggingface}/hub
@@ -44,7 +46,17 @@ Options:
   --pages RANGE      Limit --doc extraction to these pages, e.g. "1-5,10,15-20"
   --image PATH       Describe the given image using vision backend
   --audio PATH       Transcribe the given audio file using audio backend
+  --top-k N          Chunks retrieved per query for large inputs (default: 6)
+  --chunk-size N     Characters per chunk when embedding (default: 1000)
   -h, --help         Show this help and exit
+  -V, --version      Print version and exit
+
+Subcommands:
+  doctor             Run the dependency check and exit
+  cache [info|list|clear]   Inspect or clear the LanceDB vector cache
+
+Piped input: when no --txt/--doc/--dir is given, stdin is read as the document,
+  e.g.  cat notes.txt | $(basename "$0") --ask "summarize this"
 EOF
 }
 
@@ -114,6 +126,40 @@ ensure_uvx() {
     echo "uv installed." >&2
 }
 
+cmd_cache() {
+    local sub="${1:-info}"
+    case "$sub" in
+        ""|info|status)
+            echo "Vector cache: $RAG_DB"
+            if [[ -d "$RAG_DB" ]]; then
+                local n
+                n=$(find "$RAG_DB" -maxdepth 1 -name "*.lance" 2>/dev/null | wc -l | tr -d ' ')
+                echo "Size:           $(du -sh "$RAG_DB" 2>/dev/null | cut -f1)"
+                echo "Indexed tables: $n"
+                echo "Eviction TTL:   ${RAG_TTL}s"
+            else
+                echo "(empty — nothing indexed yet)"
+            fi
+            ;;
+        list)
+            if [[ -d "$RAG_DB" ]]; then
+                find "$RAG_DB" -maxdepth 1 -name "*.lance" 2>/dev/null \
+                    | sed -E 's#.*/##; s#\.lance$##' | sort
+            else
+                echo "(empty)"
+            fi
+            ;;
+        clear)
+            rm -rf "$RAG_DB"
+            echo "Cleared vector cache: $RAG_DB"
+            ;;
+        *)
+            echo "Usage: $(basename "$0") cache [info|list|clear]" >&2
+            return 1
+            ;;
+    esac
+}
+
 model_variant="e2b"
 model_explicit=false
 action=""
@@ -122,6 +168,13 @@ txt_path=""
 doc_path=""
 dir_path=""
 pages=""
+
+# Subcommands / standalone flags (must be the first argument).
+case "${1:-}" in
+    -V|--version|version) echo "gemma $VERSION"; exit 0 ;;
+    doctor)               echo "gemma $VERSION"; check_deps; exit 0 ;;
+    cache)                shift; cmd_cache "$@"; exit $? ;;
+esac
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -155,6 +208,19 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 && -n "${2:-}" ]] || { echo "Error: --pages requires a value" >&2; usage; exit 1; }
             pages="$2"
             shift 2
+            ;;
+        --top-k)
+            [[ $# -ge 2 && "${2:-}" =~ ^[0-9]+$ ]] || { echo "Error: --top-k requires a number" >&2; exit 1; }
+            RAG_TOPK="$2"
+            shift 2
+            ;;
+        --chunk-size)
+            [[ $# -ge 2 && "${2:-}" =~ ^[0-9]+$ ]] || { echo "Error: --chunk-size requires a number" >&2; exit 1; }
+            CHUNK_SIZE="$2"
+            shift 2
+            ;;
+        -V|--version)
+            echo "gemma $VERSION"; exit 0
             ;;
         --ask|--image|--audio)
             [[ -z "$action" ]] || { echo "Error: only one of --ask/--image/--audio allowed" >&2; exit 1; }
@@ -201,9 +267,17 @@ if [[ -n "$pages" && -z "$doc_path" ]]; then
     exit 1
 fi
 
-# File analysis (--txt/--doc/--dir) is a heavier task; default to the stronger
-# e4b model unless the user explicitly picked one with --model.
-if [[ $inputs -eq 1 && "$model_explicit" == false ]]; then
+# Piped input: with --ask and no file/dir, read the document from stdin.
+from_stdin=0
+STDIN_TEXT=""
+if [[ "$action" == "--ask" && $inputs -eq 0 && ! -t 0 ]]; then
+    STDIN_TEXT="$(cat)"
+    [[ -n "$STDIN_TEXT" ]] && from_stdin=1
+fi
+
+# File analysis (--txt/--doc/--dir/stdin) is a heavier task; default to the
+# stronger e4b model unless the user explicitly picked one with --model.
+if [[ ( $inputs -eq 1 || $from_stdin -eq 1 ) && "$model_explicit" == false ]]; then
     model_variant="e4b"
 fi
 
@@ -227,6 +301,9 @@ ensure_uvx  # install uv on demand if it's missing
 case "$action" in
     --ask)
         prompt="$arg"
+        rag_extra=()
+        [[ -n "$CHUNK_SIZE" ]] && rag_extra+=(--chunk-size "$CHUNK_SIZE")
+
         if [[ -n "$dir_path" ]]; then
             # Directory knowledge base: ingest (incrementally) and retrieve.
             mkdir -p "$(dirname "$RAG_DB")"
@@ -238,7 +315,8 @@ case "$action" in
                 --recursive \
                 --query "$arg" \
                 --top-k "$RAG_TOPK" \
-                --ttl "$RAG_TTL")"
+                --ttl "$RAG_TTL" \
+                ${rag_extra[@]+"${rag_extra[@]}"})"
             prompt="$arg
 
 Use the following excerpts from files in \"$dir_path\" to answer
@@ -259,13 +337,20 @@ $context"
             parse_args=(--quiet "$doc_path")
             [[ -n "$pages" ]] && parse_args+=(--target-pages "$pages")
             extracted="$(uvx --from liteparse lit parse "${parse_args[@]}")"
+        elif [[ $from_stdin -eq 1 ]]; then
+            src="(stdin)"
+            extracted="$STDIN_TEXT"
         fi
 
         if [[ -n "$src" ]]; then
             if [[ ${#extracted} -gt $RAG_THRESHOLD_CHARS ]]; then
-                # Large file: retrieve only the relevant chunks via LanceDB.
+                # Large input: retrieve only the relevant chunks via LanceDB.
                 mkdir -p "$(dirname "$RAG_DB")"
-                cache_key="$src|$(stat -f '%z-%m' "$src")|pages=${pages}"
+                if [[ $from_stdin -eq 1 ]]; then
+                    cache_key="stdin|$(printf '%s' "$extracted" | shasum | cut -d' ' -f1)|cs=${CHUNK_SIZE}"
+                else
+                    cache_key="$src|$(stat -f '%z-%m' "$src")|pages=${pages}|cs=${CHUNK_SIZE}"
+                fi
                 echo "Large input (${#extracted} chars) — retrieving relevant chunks via LanceDB..." >&2
                 context="$(printf '%s' "$extracted" | uvx --python 3.12 --with lancedb --with model2vec \
                     python "$RAG_HELPER" \
@@ -273,7 +358,8 @@ $context"
                     --cache-key "$cache_key" \
                     --query "$arg" \
                     --top-k "$RAG_TOPK" \
-                    --ttl "$RAG_TTL")"
+                    --ttl "$RAG_TTL" \
+                    ${rag_extra[@]+"${rag_extra[@]}"})"
                 prompt="$arg
 
 Use the following excerpts from \"$(basename "$src")\" to answer:

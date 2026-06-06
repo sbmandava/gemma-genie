@@ -125,10 +125,18 @@ def save_usage(usage, usage_path):
 
 def chunk_text(text, max_chars=1000, overlap=150):
     """Split text into overlapping chunks on paragraph/line boundaries."""
-    # Prefer splitting on blank lines, fall back to single newlines.
+    max_chars = max(1, max_chars)
+    # Keep overlap below max_chars so the hard-split step stays positive
+    # (otherwise small --chunk-size values would drop content).
+    overlap = min(max(0, overlap), max_chars // 4)
+    step = max(1, max_chars - overlap)
+    # Split on blank lines first; if the text is single-newline separated
+    # (e.g. CSV/logs) treat each line as a unit so chunks respect boundaries.
     paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    if not paras:
-        paras = [ln for ln in text.splitlines() if ln.strip()]
+    if len(paras) <= 1:
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        if lines:
+            paras = lines
     chunks = []
     buf = ""
     for p in paras:
@@ -141,7 +149,7 @@ def chunk_text(text, max_chars=1000, overlap=150):
                 buf = p
             else:
                 # Hard-split an oversized paragraph (e.g. a wide table row).
-                for i in range(0, len(p), max_chars - overlap):
+                for i in range(0, len(p), step):
                     chunks.append(p[i : i + max_chars])
                 buf = ""
     if buf:
@@ -161,7 +169,7 @@ def _sql_quote(s):
     return s.replace("'", "''")
 
 
-def ingest_dir(db, name, root, recursive, model, existing):
+def ingest_dir(db, name, root, recursive, model, existing, chunk_size=1000):
     """Build or incrementally update a directory's table; return the table.
 
     Re-embeds only files that are new or whose size+mtime changed, and drops
@@ -179,7 +187,7 @@ def ingest_dir(db, name, root, recursive, model, existing):
 
     def chunks_for(rel, abspath, sig):
         rows = []
-        for c in chunk_text(extract_file(abspath) or ""):
+        for c in chunk_text(extract_file(abspath) or "", max_chars=chunk_size):
             rows.append({"source": rel, "sig": sig, "text": c})
         return rows
 
@@ -226,6 +234,8 @@ def main():
                     help="with --dir, descend into subdirectories")
     ap.add_argument("--query", required=True)
     ap.add_argument("--top-k", type=int, default=6)
+    ap.add_argument("--chunk-size", type=int, default=1000,
+                    help="characters per chunk when embedding")
     ap.add_argument("--ttl", type=int, default=86400,
                     help="evict cached tables idle longer than this many seconds")
     args = ap.parse_args()
@@ -252,7 +262,8 @@ def main():
 
     if args.dir:
         table, (total, added, removed) = ingest_dir(
-            db, name, args.dir, args.recursive, model, existing)
+            db, name, args.dir, args.recursive, model, existing,
+            chunk_size=args.chunk_size)
         if table is None:
             sys.stderr.write("No supported files found in directory.\n")
             sys.exit(2)
@@ -263,7 +274,7 @@ def main():
         table = db.open_table(name)
     else:
         text = sys.stdin.read()
-        chunks = chunk_text(text)
+        chunks = chunk_text(text, max_chars=args.chunk_size)
         vectors = model.encode(chunks)
         rows = [
             {"id": i, "text": c, "vector": vectors[i].tolist()}

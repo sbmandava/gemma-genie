@@ -39,9 +39,25 @@ gemma --ask "What's our vacation policy and who owns project X?" --dir ~/notes
 # Vision / audio
 gemma --image photo.jpg
 gemma --audio clip.wav
+
+# Pipe input from stdin
+cat notes.txt | gemma --ask "summarize this"
+
+# Tune retrieval for large inputs
+gemma --ask "key risks?" --doc big.pdf --top-k 10 --chunk-size 1500
 ```
 
 Run `gemma --help` for all options plus a live dependency check.
+
+### Utility commands
+
+```bash
+gemma --version            # print version
+gemma doctor               # dependency check
+gemma cache info           # show vector-cache path, size, table count
+gemma cache list           # list indexed tables
+gemma cache clear          # wipe the vector cache
+```
 
 ## How it works
 
@@ -71,9 +87,21 @@ Run `gemma --help` for all options plus a live dependency check.
 |-----|---------|---------|
 | `GEMMA_CACHE_DB` | `~/.gemma/gemma-cache.db` | vector cache location |
 | `GEMMA_RAG_THRESHOLD` | `14000` | char threshold before RAG kicks in |
-| `GEMMA_RAG_TOPK` | `6` | chunks retrieved per query |
+| `GEMMA_RAG_TOPK` | `6` | chunks retrieved per query (`--top-k`) |
+| `GEMMA_CHUNK_SIZE` | `1000` | characters per chunk (`--chunk-size`) |
 | `GEMMA_CACHE_TTL` | `86400` | evict cached tables idle longer than this (seconds) |
 | `HF_HOME` | `~/.cache/huggingface` | model cache root |
 
 Installer-only: `GEMMA_INSTALL_DIR`, `GEMMA_BIN_DIR`, `GEMMA_RAW_BASE`,
 `GEMMA_SKIP_MODELS=1`, `GEMMA_SKIP_PREWARM=1`.
+
+## References
+
+- [Quantization-aware training for Gemma 4](https://blog.google/innovation-and-ai/technology/developers-tools/quantization-aware-training-gemma-4/)
+  — the QAT-tuned Gemma 4 models this CLI runs.
+- [LiteRT-LM overview](https://developers.google.com/edge/litert-lm/overview)
+  — the on-device runtime (`litert-lm`) used to run the models.
+
+Also built on [LanceDB](https://lancedb.github.io/lancedb/),
+[model2vec](https://github.com/MinishLab/model2vec), and
+[liteparse](https://pypi.org/project/liteparse/).

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/genie"]
+members = ["crates/genie", "crates/genie-bootstrap"]
 
 # ---------------------------------------------------------------------------
 # Local-source overrides (see ../CLAUDE.md "Building the Rust version").

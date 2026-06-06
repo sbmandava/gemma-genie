@@ -9,12 +9,26 @@ One command bootstraps everything (`uv`/`uvx`, the Gemma model weights, the
 embedder, and a `genie` symlink on your `PATH`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/python/install.sh | bash
 ```
 
 The installer is idempotent — re-run it any time to repair an install. First run
 downloads several GB of model weights (network needed once); after that Genie
 works fully offline.
+
+### Want the Rust single-binary build instead?
+
+Same command with `--rust` — it downloads the prebuilt Rust `genie` for your
+OS/arch (no Python at runtime) and sets up the same model/runtime. You don't need
+to know any paths:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/python/install.sh | bash -s -- --rust
+```
+
+Prebuilt CLIs are published for **x86_64 Linux** and **Apple-Silicon macOS**;
+other targets build from source (see [rust/README.md](rust/README.md)). Usage
+below is identical for both builds.
 
 ## B. Verify the install — `genie doctor`
 

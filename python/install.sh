@@ -2,17 +2,27 @@
 #
 # Gemma Genie installer — bootstraps everything on a fresh machine.
 #
+#   # Python implementation (bash + Python helpers, the default):
 #   curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/python/install.sh | bash
+#
+#   # Rust single-binary build (downloads the prebuilt genie for your OS/arch):
+#   curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/python/install.sh | bash -s -- --rust
 #
 # Idempotent: safe to re-run. If you delete ~/.genie (the vector cache) or are on
 # a brand-new laptop, re-running this brings everything back, including the
 # Gemma model weights.
+#
+# Flags:
+#   --rust              install the prebuilt Rust `genie` binary instead of the
+#                       bash + Python scripts (same runtime: litert-lm + models)
 #
 # Environment overrides:
 #   GENIE_INSTALL_DIR   where the scripts live   (default: ~/.local/share/genie)
 #   GENIE_BIN_DIR       where the `genie` link goes (default: ~/.local/bin, then /usr/local/bin)
 #   GENIE_RAW_BASE      raw URL to fetch files from when piped via curl
 #   GENIE_RAW_SUBDIR    repo subdir holding the scripts (default: python; "" = root)
+#   GENIE_RUST_RELEASE  GitHub release tag for --rust (default: rust-prebuilt-0.2.4)
+#   GENIE_RUST_BASE     base URL for --rust binaries (default: that release's assets)
 #   HF_HOME             HuggingFace cache root (default: ~/.cache/huggingface) — all models go here
 #   GENIE_SKIP_MODELS=1 skip downloading the (large) Gemma weights
 #   GENIE_SKIP_PREWARM=1 skip all pre-downloads (deps still install)
@@ -48,6 +58,30 @@ SRC_DIR=""
 if [ -n "$SELF" ] && [ -f "$SELF" ] && [ -f "$(dirname "$SELF")/genie" ]; then
     SRC_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 fi
+
+# Flags.
+RUST_MODE=0
+for arg in "$@"; do
+    case "$arg" in
+        --rust) RUST_MODE=1 ;;
+        -h|--help) sed -n '2,30p' "$0" 2>/dev/null | sed 's/^#//'; exit 0 ;;
+        *) warn "ignoring unknown flag: $arg" ;;
+    esac
+done
+
+# Rust prebuilt download settings (used only with --rust).
+RUST_RELEASE="${GENIE_RUST_RELEASE:-rust-prebuilt-0.2.4}"
+RUST_BASE="${GENIE_RUST_BASE:-https://github.com/sbmandava/gemma-genie/releases/download/$RUST_RELEASE}"
+
+# Name of the prebuilt Rust `genie` CLI asset for this OS/arch (empty if none).
+rust_cli_asset() {
+    local os arch
+    case "$(uname)" in Darwin) os=macos ;; Linux) os=linux ;; *) return ;; esac
+    case "$(uname -m)" in x86_64|amd64) arch=x86_64 ;; arm64|aarch64) arch=aarch64 ;; *) return ;; esac
+    if [ "$os" = linux ] && [ "$arch" = x86_64 ]; then echo "genie-x86_64-linux-gnu"
+    elif [ "$os" = macos ] && [ "$arch" = aarch64 ]; then echo "genie-aarch64-macos"
+    fi   # other targets have no prebuilt CLI yet
+}
 
 # ---------------------------------------------------------------------------
 # 1. uv / uvx  (runs the model, liteparse, and the RAG helper)
@@ -126,9 +160,23 @@ fetch() {  # fetch <filename>
           || curl -fsSL "$RAW_BASE/$1" -o "$INSTALL_DIR/$1"
     fi
 }
-fetch genie
-fetch genie_rag.py
-fetch genie_graph.py
+
+if [ "$RUST_MODE" = 1 ]; then
+    asset="$(rust_cli_asset)"
+    if [ -z "$asset" ]; then
+        warn "No prebuilt Rust 'genie' for $(uname)/$(uname -m)."
+        warn "Prebuilt CLIs exist only for x86_64-linux and aarch64-macOS;"
+        warn "build from source in rust/ for other targets. Falling back to the bash version is also an option (re-run without --rust)."
+        exit 1
+    fi
+    say "Installing the Rust genie binary ($asset) from release $RUST_RELEASE..."
+    curl -fSL "$RUST_BASE/$asset" -o "$INSTALL_DIR/genie" \
+        || { warn "Failed to download $RUST_BASE/$asset"; exit 1; }
+else
+    fetch genie
+    fetch genie_rag.py
+    fetch genie_graph.py
+fi
 chmod +x "$INSTALL_DIR/genie"
 
 mkdir -p "$CACHE_DIR"   # vector cache lives here (recreated if deleted)

@@ -7,6 +7,9 @@ use std::process::Command;
 /// Pinned litert-lm runtime version (used only for the `uvx` fallback).
 pub const LITERT_VERSION: &str = "0.13.1";
 
+/// Static embedder used for RAG (must match the Python implementation).
+pub const EMBED_MODEL: &str = "minishlab/potion-retrieval-32M";
+
 pub struct Config {
     pub home: PathBuf,
     pub genie_dir: PathBuf,
@@ -17,6 +20,12 @@ pub struct Config {
     pub forced_backend: Option<String>,
     /// Resolved model variant: "e2b" or "e4b".
     pub model_variant: String,
+    // --- RAG (M2/M3) ---
+    pub cache_db: PathBuf,
+    pub rag_threshold: usize,
+    pub rag_topk: usize,
+    pub chunk_size: usize,
+    pub rag_ttl: u64,
 }
 
 impl Config {
@@ -29,6 +38,11 @@ impl Config {
             env_path("GENIE_MODEL_DEFAULT_FILE", genie_dir.join("model_default"));
         let forced_backend = nonempty_env("GENIE_BACKEND");
         let model_variant = resolve_model(model_override, &model_default_file);
+        let cache_db = env_path("GENIE_CACHE_DB", genie_dir.join("genie-cache.db"));
+        let rag_threshold = env_usize("GENIE_RAG_THRESHOLD", 14000);
+        let rag_topk = env_usize("GENIE_RAG_TOPK", 15);
+        let chunk_size = env_usize("GENIE_CHUNK_SIZE", 1000);
+        let rag_ttl = env_usize("GENIE_CACHE_TTL", 86400) as u64;
         Ok(Config {
             home,
             genie_dir,
@@ -37,6 +51,11 @@ impl Config {
             model_default_file,
             forced_backend,
             model_variant,
+            cache_db,
+            rag_threshold,
+            rag_topk,
+            chunk_size,
+            rag_ttl,
         })
     }
 
@@ -103,6 +122,12 @@ fn nonempty_env(var: &str) -> Option<String> {
         Ok(v) if !v.is_empty() => Some(v),
         _ => None,
     }
+}
+
+fn env_usize(var: &str, default: usize) -> usize {
+    nonempty_env(var)
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(default)
 }
 
 fn resolve_model(model_override: Option<&str>, model_default_file: &Path) -> String {

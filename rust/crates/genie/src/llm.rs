@@ -37,6 +37,11 @@ pub fn ask(question: &str, cfg: &Config, _cli: &Cli) -> Result<()> {
     run(cfg, Action::Ask(build_prompt_with_stdin(question)))
 }
 
+/// Run the model on an already-built prompt (used by the RAG path).
+pub fn generate(cfg: &Config, prompt: String) -> Result<()> {
+    run(cfg, Action::Ask(prompt))
+}
+
 pub fn describe_image(path: &Path, cfg: &Config, _cli: &Cli) -> Result<()> {
     run(cfg, Action::Image(path.to_string_lossy().into_owned()))
 }

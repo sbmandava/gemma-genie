@@ -14,6 +14,15 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 
+# M2 — document parsing + RAG (local sources; see ../../CLAUDE.md)
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+futures = "0.3"
+arrow-array = "58"
+arrow-schema = "58"
+liteparse = { path = "/opt/projects/unovie/research/liteparse/crates/liteparse" }
+model2vec-rs = { path = "/opt/projects/unovie/research/model2vec-rs" }
+lancedb = { path = "/opt/projects/unovie/research/lancedb/rust/lancedb" }
+
 # ---------------------------------------------------------------------------
 # Added per milestone. Use the LOCAL research/ sources (see ../../CLAUDE.md);
 # do not switch to crates.io without checking the local repo first.

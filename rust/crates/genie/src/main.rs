@@ -1,24 +1,12 @@
-// Gemma Genie — Rust rewrite (single binary). SCAFFOLD ONLY.
-//
-// This parses the full CLI surface of the bash `genie` and dispatches to module
-// stubs. No behaviour yet — each path prints which milestone implements it.
+// Gemma Genie — Rust rewrite (single binary). CLI parse + dispatch.
+// Modules live in the library (src/lib.rs) so tests/ can exercise them.
 // See ../../RUST_PLAN.md for the plan and ../../CLAUDE.md for dependency wiring.
-#![allow(dead_code)]
-
-mod backend;
-mod cli;
-mod config;
-mod doctor;
-mod graph;
-mod llm;
-mod models;
-mod parse;
-mod rag;
 
 use anyhow::Result;
 use clap::Parser;
-use cli::{Cli, Command};
-use config::Config;
+use genie::cli::{Cli, Command};
+use genie::config::Config;
+use genie::{doctor, graph, llm, models, rag};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -28,7 +16,7 @@ fn main() -> Result<()> {
     if let Some(cmd) = &cli.command {
         return match cmd {
             Command::Doctor => doctor::run(&cfg),
-            Command::Cache { action } => rag::cache(action),
+            Command::Cache { action } => rag::cache(action, &cfg),
         };
     }
 
@@ -57,7 +45,7 @@ fn main() -> Result<()> {
         // Document-grounded asks need parsing + RAG (M2/M3); plain or piped
         // questions are answered directly by the model (M1).
         if cli.doc.is_some() || cli.txt.is_some() || cli.dir.is_some() {
-            return rag::ask(question, &cli);
+            return rag::ask(question, &cli, &cfg);
         }
         return llm::ask(question, &cfg, &cli);
     }

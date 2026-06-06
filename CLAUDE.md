@@ -18,7 +18,7 @@ crate (noted below). Always check the repo first.
 |---|---|---|---|
 | **lancedb** | `/opt/projects/unovie/research/lancedb/rust/lancedb` (v0.30.1-beta.2, repo @ `python-v0.33.1-beta.2`) | `lancedb` | **Path dep to local source.** |
 | **liteparse** | `/opt/projects/unovie/research/liteparse/crates/liteparse` (v2.0.6) | `liteparse` | **Path dep to local source.** |
-| **ladybug / lbug** | `/opt/projects/unovie/research/ladybug` (C++ engine, repo @ `v0.17.1`). Rust API is the **uninitialized submodule** `tools/rust_api` → github.com/ladybugdb/ladybug-rust | `lbug` | **Init the submodule first**, then path dep: `git -C /opt/projects/unovie/research/ladybug submodule update --init tools/rust_api`. Building links the C++ engine (CMake). If that's not viable, fall back to `cargo add lbug`. |
+| **ladybug / lbug** | `/opt/projects/unovie/research/ladybug-rust` (crate `lbug` v0.17.0) — standalone clone. Its `build.rs` builds the C++ engine via **CMake**, using the sibling C++ source `/opt/projects/unovie/research/ladybug` (present, repo @ `v0.17.1`) if found, else downloading it. | `lbug` | **Path dep to local source.** Needs `cmake` + a C++ toolchain on the build host. |
 | **model2vec** | `/opt/projects/unovie/research/model2vec-rs` (v0.2.1, repo @ `v0.2.1`) — the Rust port. (`/opt/projects/unovie/research/model2vec` is the separate Python repo.) | `model2vec-rs` | **Path dep to local source.** Inference-only (fine — genie only encodes). |
 | **litert-lm** | `/opt/projects/unovie/research/LiteRT-LM` (C++; C API in `c/engine.h`). **No Rust inference crate.** | — | v1 **subprocesses the prebuilt `litert-lm` binary** (per RUST_PLAN.md). FFI via `bindgen` over `c/engine.h` is a later, optional milestone. |
 

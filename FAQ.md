@@ -196,12 +196,16 @@ genie --ask "what changed?" --dir ~/project-docs
 
 ### What are my laptop requirements?
 
+**Preferred hardware:** an **Apple MacBook with an M-series chip (M1/M2/M3/M4)
+and 16 GB of RAM**. The unified memory and GPU give the smoothest experience and
+run the stronger **e4b** model comfortably.
+
 | Resource | Minimum | Recommended |
 |----------|---------|-------------|
-| OS | macOS, Linux (Windows via WSL2, untested) | macOS / Linux |
-| RAM | ~4 GB (uses the smaller **e2b** model) | 8 GB+ (uses **e4b**) |
+| OS | macOS, Linux (Windows via WSL2, untested) | macOS (Apple Silicon) |
+| RAM | ~4 GB (uses the smaller **e2b** model) | 16 GB (runs **e4b** comfortably) |
 | Disk | ~6–8 GB free (model weights + caches) | 10 GB+ |
-| GPU | none (CPU works) | Apple Silicon / supported GPU |
+| GPU | none (CPU works) | Apple M-series / supported GPU |
 
 - The default model is chosen automatically from RAM: **< 6 GB → e2b**,
   **≥ 6 GB → e4b**. Override anytime with `--model e2b|e4b` or `GEMMA_MODEL`.

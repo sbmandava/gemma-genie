@@ -141,14 +141,16 @@ struct Manifest {
     components: Components,
 }
 
-#[derive(Deserialize)]
+/// All component sections are optional, so a manifest can host just the binary
+/// (the rest — runtime/model/embedder — may come from elsewhere, e.g. pip/HF).
+#[derive(Deserialize, Default)]
+#[serde(default)]
 struct Components {
     binary: BTreeMap<String, Artifact>,
     runtime: BTreeMap<String, Artifact>,
-    #[serde(default)]
     gpu: BTreeMap<String, Artifact>,
     model: BTreeMap<String, Artifact>,
-    embedder: Artifact,
+    embedder: Option<Artifact>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -207,7 +209,7 @@ fn build_plan(env: &Env, manifest: Option<&Manifest>) -> Vec<PlanItem> {
     // 5. embedder — always
     add(
         "embedder (potion-retrieval-32M)".into(),
-        manifest.map(|m| m.components.embedder.clone()),
+        manifest.and_then(|m| m.components.embedder.clone()),
         "small; always needed for RAG".into(),
     );
 

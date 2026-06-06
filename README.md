@@ -5,6 +5,16 @@ A small local-LLM CLI built on Google's **Gemma 4** models — **E2B** (fast) an
 [`litert-lm`](https://github.com/google-ai-edge/litert-lm). Ask questions,
 analyze documents, and query whole directories — all locally.
 
+## Supported platforms
+
+| OS | Status |
+|----|--------|
+| macOS (Apple Silicon / Intel) | ✅ supported |
+| Linux (x86_64 / arm64) | ✅ supported |
+| Windows (WSL2) | ⚠️ not tested — should work under WSL2 |
+
+GPU acceleration is used when available, with automatic fallback to CPU.
+
 ## Install
 
 ```bash

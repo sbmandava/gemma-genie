@@ -21,6 +21,8 @@ set -euo pipefail
 INSTALL_DIR="${GENIE_INSTALL_DIR:-$HOME/.local/share/genie}"
 RAW_BASE="${GENIE_RAW_BASE:-https://raw.githubusercontent.com/sbmandava/gemma-genie/main}"
 CACHE_DIR="$HOME/.genie"
+# Pin the litert-lm runtime so uvx resolves a known-good version.
+LITERT_VERSION="0.13.1"
 
 # All models live in the HuggingFace hub cache.
 export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
@@ -144,21 +146,21 @@ hf_cached() {  # repo [file]
 
 if [ "${GENIE_SKIP_PREWARM:-0}" != "1" ]; then
     say "Pre-fetching liteparse..."
-    uvx --from liteparse lit --help >/dev/null 2>&1 || warn "liteparse prefetch failed"
+    uvx --from liteparse==2.0.6 lit --help >/dev/null 2>&1 || warn "liteparse prefetch failed"
 
-    if hf_cached "minishlab/potion-base-8M"; then
+    if hf_cached "minishlab/potion-retrieval-32M"; then
         say "Embedder (model2vec) already cached — skipping."
     else
         say "Pre-fetching lancedb + model2vec embedder..."
-        uvx --python 3.12 --with lancedb --with model2vec python - <<'PY' >/dev/null 2>&1 || warn "embedder prefetch failed"
+        uvx --python 3.12 --with lancedb==0.33.0 --with model2vec==0.8.2 python - <<'PY' >/dev/null 2>&1 || warn "embedder prefetch failed"
 from model2vec import StaticModel
-StaticModel.from_pretrained("minishlab/potion-base-8M")
+StaticModel.from_pretrained("minishlab/potion-retrieval-32M")
 import lancedb  # noqa: F401
 PY
     fi
 
     say "Pre-fetching ladybug (graph correlation)..."
-    uvx --python 3.12 --with ladybug python -c "import ladybug" >/dev/null 2>&1 \
+    uvx --python 3.12 --with ladybug==0.17.1 python -c "import ladybug" >/dev/null 2>&1 \
         || warn "ladybug prefetch failed"
 
     if [ "${GENIE_SKIP_MODELS:-0}" != "1" ]; then
@@ -183,7 +185,7 @@ PY
     if [ ! -s "$CACHE_DIR/backend" ]; then
         mp="$(find "$HF_HOME/hub" -name "gemma-4-E2B-it.litertlm" 2>/dev/null | head -1)"
         if [ -n "$mp" ]; then
-            if uvx litert-lm run "$mp" --backend=gpu --max-num-tokens 64 --prompt "ok" >/dev/null 2>&1; then
+            if uvx "litert-lm@${LITERT_VERSION}" run "$mp" --backend=gpu --max-num-tokens 64 --prompt "ok" >/dev/null 2>&1; then
                 echo gpu > "$CACHE_DIR/backend"; say "Compute backend: gpu"
             else
                 echo cpu > "$CACHE_DIR/backend"; say "Compute backend: cpu"

@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["ladybug"]
+# dependencies = ["ladybug==0.17.1"]
 # ///
 """
 Graph-correlation helper for the `gemma` CLI, backed by LadybugDB.
@@ -78,6 +78,8 @@ def extract_entities(text, max_entities=40):
 def extract_entities_llm(text, model_path, max_entities=40, backend="gpu"):
     """Higher-quality entity extraction via the Gemma model (one call per file)."""
     uvx = shutil.which("uvx") or "uvx"
+    # Pin the runtime so uvx resolves a known-good version (matches genie).
+    litert = "litert-lm@0.13.1"
     prompt = (
         "Extract the key named entities (people, organizations, projects, "
         "products, places) from the text. Reply with ONLY a comma-separated "
@@ -85,7 +87,7 @@ def extract_entities_llm(text, model_path, max_entities=40, backend="gpu"):
     )
     try:
         r = subprocess.run(
-            [uvx, "litert-lm", "run", model_path, f"--backend={backend}", "--prompt", prompt],
+            [uvx, litert, "run", model_path, f"--backend={backend}", "--prompt", prompt],
             capture_output=True, text=True,
         )
         out = r.stdout if r.returncode == 0 else ""

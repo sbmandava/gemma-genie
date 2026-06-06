@@ -442,7 +442,7 @@ rm -rf ~/.genie
 To also remove the downloaded **model weights** (frees several GB):
 ```bash
 rm -rf ~/.cache/huggingface/hub/models--litert-community--gemma-4-*
-rm -rf ~/.cache/huggingface/hub/models--minishlab--potion-base-8M
+rm -rf ~/.cache/huggingface/hub/models--minishlab--potion-retrieval-32M
 ```
 They re-download on next use (needs network once).
 

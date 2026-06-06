@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["lancedb", "model2vec", "numpy", "pyarrow"]
+# dependencies = ["lancedb==0.33.0", "model2vec==0.8.2", "numpy==2.4.6", "pyarrow==24.0.0"]
 # ///
 """
 RAG helper for the `gemma` script.
@@ -26,7 +26,7 @@ import subprocess
 import sys
 import time
 
-EMBED_MODEL = "minishlab/potion-base-8M"
+EMBED_MODEL = "minishlab/potion-retrieval-32M"
 USAGE_FILE = ".usage.json"
 
 # Files read directly as text.
@@ -54,7 +54,7 @@ def extract_file(path):
         uvx = shutil.which("uvx") or "uvx"
         try:
             r = subprocess.run(
-                [uvx, "--from", "liteparse", "lit", "parse", "--quiet", path],
+                [uvx, "--from", "liteparse==2.0.6", "lit", "parse", "--quiet", path],
                 capture_output=True, text=True,
             )
             return r.stdout if r.returncode == 0 else ""

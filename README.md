@@ -30,7 +30,7 @@ The installer is idempotent and bootstraps **everything** on a fresh machine:
 
 - `uv` / `uvx` (auto-installed if missing)
 - LibreOffice (macOS, for DOCX/XLSX/PPTX parsing)
-- `liteparse`, `lancedb`, `model2vec` (fetched via `uvx`)
+- `liteparse`, `lancedb`, `model2vec`, `ladybug` (fetched via `uvx`, pinned — see [VERSIONS.md](VERSIONS.md))
 - the Gemma model weights (downloaded into the HuggingFace hub cache)
 - a `genie` symlink on your `PATH`
 
@@ -149,8 +149,10 @@ Installer-only: `GENIE_INSTALL_DIR`, `GENIE_BIN_DIR`, `GENIE_RAW_BASE`,
 
 Also built on [LanceDB](https://lancedb.github.io/lancedb/),
 [LadybugDB](https://github.com/LadybugDB/ladybug) (embedded Cypher graph DB),
-[model2vec](https://github.com/MinishLab/model2vec), and
-[liteparse](https://pypi.org/project/liteparse/).
+[model2vec](https://github.com/MinishLab/model2vec) (the
+`minishlab/potion-retrieval-32M` embedder), and
+[liteparse](https://pypi.org/project/liteparse/). All pinned versions are listed
+in [VERSIONS.md](VERSIONS.md).
 
 Huge thanks to **[Google DeepMind](https://deepmind.google/)** for their amazing
 innovation — **TensorFlow**, **LiteRT/LiteRT-LM**, and the open, offline-capable
@@ -159,6 +161,10 @@ innovation — **TensorFlow**, **LiteRT/LiteRT-LM**, and the open, offline-capab
 Special thanks to **[Prashant Rao](https://ca.linkedin.com/in/prrao87)** at
 LanceDB — a truly innovative leader from Toronto who teaches the world through
 his blog, [The Data Quarry](https://thedataquarry.com/).
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the version history.
 
 ## Sponsor & vision
 

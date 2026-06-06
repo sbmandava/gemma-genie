@@ -36,7 +36,10 @@ RAG_THRESHOLD_CHARS="${GENIE_RAG_THRESHOLD:-14000}"   # ~3500 tokens
 RAG_TOPK="${GENIE_RAG_TOPK:-15}"
 RAG_TTL="${GENIE_CACHE_TTL:-86400}"   # evict cached tables idle >24h
 CHUNK_SIZE="${GENIE_CHUNK_SIZE:-}"    # chars per chunk (empty = helper default)
-VERSION="0.2.1"
+# Pin the litert-lm runtime so uvx resolves a known-good version instead of
+# silently pulling a newer (possibly breaking) release on a cache miss.
+LITERT_VERSION="0.13.1"
+VERSION="0.2.2"
 
 # All models (Gemma weights + the model2vec embedder) live in the HuggingFace
 # hub cache: ${HF_HOME:-$HOME/.cache/huggingface}/hub
@@ -224,7 +227,7 @@ cmd_uninstall() {
     fi
     rm -rf "$HOME/.genie" && echo "Removed $HOME/.genie"
     rm -rf "$HF_HOME"/hub/models--litert-community--gemma-4-* 2>/dev/null && echo "Removed Gemma model weights"
-    rm -rf "$HF_HOME"/hub/models--minishlab--potion-base-8M 2>/dev/null && echo "Removed embedder weights"
+    rm -rf "$HF_HOME"/hub/models--minishlab--potion-retrieval-32M 2>/dev/null && echo "Removed embedder weights"
     local b
     for b in /usr/local/bin/genie "$HOME/.local/bin/genie"; do
         if [[ -L "$b" || -e "$b" ]]; then
@@ -308,7 +311,7 @@ graph_model_path() {  # echo cached E4B model path (for --llm extraction), if pr
 # Invoke the graph helper (update/stats/query). Best-effort for updates.
 run_graph() {
     ensure_uvx
-    uvx --python 3.12 --with ladybug python "$GRAPH_HELPER" \
+    uvx --python 3.12 --with ladybug==0.17.1 python "$GRAPH_HELPER" \
         --db "$GRAPH_DB" --ttl "$RAG_TTL" "$@"
 }
 
@@ -481,9 +484,9 @@ esac
 MODEL_SNAPS="$HF_HOME/hub/models--${HF_REPO//\//--}/snapshots"
 MODEL_PATH="$(find "$MODEL_SNAPS" -name "$MODEL_FILE" 2>/dev/null | head -1)"
 if [[ -n "$MODEL_PATH" && -e "$MODEL_PATH" ]]; then
-    LITERT_RUN=(uvx litert-lm run "$MODEL_PATH")
+    LITERT_RUN=(uvx "litert-lm@${LITERT_VERSION}" run "$MODEL_PATH")
 else
-    LITERT_RUN=(uvx litert-lm run --from-huggingface-repo "$HF_REPO" "$MODEL_FILE")
+    LITERT_RUN=(uvx "litert-lm@${LITERT_VERSION}" run --from-huggingface-repo "$HF_REPO" "$MODEL_FILE")
 fi
 
 ensure_uvx  # install uv on demand if it's missing
@@ -499,7 +502,7 @@ case "$action" in
             # Directory knowledge base: ingest (incrementally) and retrieve.
             mkdir -p "$(dirname "$RAG_DB")"
             echo "Indexing \"$dir_path\" into LanceDB (incremental)..." >&2
-            context="$(uvx --python 3.12 --with lancedb --with model2vec \
+            context="$(uvx --python 3.12 --with lancedb==0.33.0 --with model2vec==0.8.2 \
                 python "$RAG_HELPER" \
                 --db "$RAG_DB" \
                 --dir "$dir_path" \
@@ -536,7 +539,7 @@ $context"
             src="$doc_path"
             parse_args=(--quiet "$doc_path")
             [[ -n "$pages" ]] && parse_args+=(--target-pages "$pages")
-            extracted="$(uvx --from liteparse lit parse "${parse_args[@]}")"
+            extracted="$(uvx --from liteparse==2.0.6 lit parse "${parse_args[@]}")"
         elif [[ $from_stdin -eq 1 ]]; then
             src="(stdin)"
             extracted="$STDIN_TEXT"
@@ -555,7 +558,7 @@ $context"
                     cache_key="$src|$(stat -f '%z-%m' "$src")|pages=${pages}|cs=${CHUNK_SIZE}"
                 fi
                 echo "Large input (${#extracted} chars) — retrieving relevant chunks via LanceDB..." >&2
-                context="$(printf '%s' "$extracted" | uvx --python 3.12 --with lancedb --with model2vec \
+                context="$(printf '%s' "$extracted" | uvx --python 3.12 --with lancedb==0.33.0 --with model2vec==0.8.2 \
                     python "$RAG_HELPER" \
                     --db "$RAG_DB" \
                     --cache-key "$cache_key" \
@@ -583,7 +586,7 @@ $extracted"
             # (LanceDB chunks + LadybugDB entity correlations).
             kb_ctx=""
             if [[ -d "$RAG_DB" ]]; then
-                kb_ctx="$(uvx --python 3.12 --with lancedb --with model2vec \
+                kb_ctx="$(uvx --python 3.12 --with lancedb==0.33.0 --with model2vec==0.8.2 \
                     python "$RAG_HELPER" --db "$RAG_DB" --search-all \
                     --query "$arg" --top-k "$RAG_TOPK" --ttl "$RAG_TTL" 2>/dev/null || true)"
             fi

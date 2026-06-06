@@ -17,12 +17,12 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 RAG_DB="${GENIE_CACHE_DB:-$HOME/.genie/genie-cache.db}"
 RAG_HELPER="$SCRIPT_DIR/genie_rag.py"
 # Fallbacks if invoked as a bare copy rather than alongside its helper.
-for cand in "/opt/projects/unovie/gemmacli/genie_rag.py" "$HOME/.genie/genie_rag.py"; do
+for cand in "$HOME/.local/share/genie/genie_rag.py" "$HOME/.genie/genie_rag.py"; do
     [[ -f "$RAG_HELPER" ]] && break
     RAG_HELPER="$cand"
 done
 GRAPH_HELPER="$SCRIPT_DIR/genie_graph.py"
-for cand in "/opt/projects/unovie/gemmacli/genie_graph.py" "$HOME/.genie/genie_graph.py"; do
+for cand in "$HOME/.local/share/genie/genie_graph.py" "$HOME/.genie/genie_graph.py"; do
     [[ -f "$GRAPH_HELPER" ]] && break
     GRAPH_HELPER="$cand"
 done

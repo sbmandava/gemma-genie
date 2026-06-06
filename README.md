@@ -119,7 +119,7 @@ genie --graph-query "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name,e.name
 
 | Path | What |
 |------|------|
-| `/opt/projects/unovie/gemmacli/` | the scripts (`genie`, `genie_rag.py`, `install.sh`) |
+| `~/.local/share/genie/` | the scripts (`genie`, `genie_rag.py`, `install.sh`) |
 | `~/.genie/genie-cache.db/` | LanceDB vector cache (safe to delete; rebuilds on demand) |
 | `~/.cache/huggingface/hub/` | all model weights (Gemma + embedder) |
 

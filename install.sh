@@ -9,8 +9,8 @@
 # Gemma model weights.
 #
 # Environment overrides:
-#   GENIE_INSTALL_DIR   where the scripts live   (default: /opt/projects/unovie/gemmacli)
-#   GENIE_BIN_DIR       where the `gemma` link goes (default: /usr/local/bin, falls back to ~/.local/bin)
+#   GENIE_INSTALL_DIR   where the scripts live   (default: ~/.local/share/genie)
+#   GENIE_BIN_DIR       where the `genie` link goes (default: ~/.local/bin, then /usr/local/bin)
 #   GENIE_RAW_BASE      raw URL to fetch files from when piped via curl
 #   HF_HOME             HuggingFace cache root (default: ~/.cache/huggingface) — all models go here
 #   GENIE_SKIP_MODELS=1 skip downloading the (large) Gemma weights
@@ -18,17 +18,17 @@
 #
 set -euo pipefail
 
-INSTALL_DIR="${GENIE_INSTALL_DIR:-/opt/projects/unovie/gemmacli}"
+INSTALL_DIR="${GENIE_INSTALL_DIR:-$HOME/.local/share/genie}"
 RAW_BASE="${GENIE_RAW_BASE:-https://raw.githubusercontent.com/sbmandava/gemma-genie/main}"
 CACHE_DIR="$HOME/.genie"
 
 # All models live in the HuggingFace hub cache.
 export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
 
-# Gemma weights to pre-download, as "hf-repo|filename" pairs.
+# Gemma weights to pre-download, as "hf-repo|filename|approx-size" entries.
 MODEL_SPECS=(
-    "litert-community/gemma-4-E2B-it-litert-lm|gemma-4-E2B-it.litertlm"
-    "litert-community/gemma-4-E4B-it-litert-lm|gemma-4-E4B-it.litertlm"
+    "litert-community/gemma-4-E2B-it-litert-lm|gemma-4-E2B-it.litertlm|2.4 GB"
+    "litert-community/gemma-4-E4B-it-litert-lm|gemma-4-E4B-it.litertlm|3.4 GB"
 )
 
 say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -109,7 +109,7 @@ fi
 # ---------------------------------------------------------------------------
 # 4. Symlink `gemma` onto the PATH
 # ---------------------------------------------------------------------------
-BIN_DIR="${GENIE_BIN_DIR:-/usr/local/bin}"
+BIN_DIR="${GENIE_BIN_DIR:-$HOME/.local/bin}"
 if { mkdir -p "$BIN_DIR" 2>/dev/null || [ -d "$BIN_DIR" ]; } && \
    ln -sf "$INSTALL_DIR/genie" "$BIN_DIR/genie" 2>/dev/null; then
     say "Linked $BIN_DIR/genie"
@@ -163,15 +163,19 @@ PY
 
     if [ "${GENIE_SKIP_MODELS:-0}" != "1" ]; then
         for spec in "${MODEL_SPECS[@]}"; do
-            repo="${spec%%|*}"; file="${spec##*|}"
+            repo="${spec%%|*}"; rest="${spec#*|}"; file="${rest%%|*}"; size="${rest##*|}"
             if hf_cached "$repo" "$file"; then
                 say "Model $repo already downloaded — skipping."
                 continue
             fi
-            say "Downloading $repo (large — several GB) into HF hub..."
-            uvx litert-lm run --from-huggingface-repo "$repo" "$file" --backend=gpu --prompt "hi" >/dev/null 2>&1 \
-              || uvx litert-lm run --from-huggingface-repo "$repo" "$file" --backend=cpu --prompt "hi" >/dev/null 2>&1 \
+            say "Downloading $repo (~${size}) into HF hub — progress below:"
+            # hf_hub_download streams a progress bar to the terminal.
+            uvx --with huggingface_hub python - "$repo" "$file" <<'PY' \
               || warn "Could not pre-download $repo (it will download on first use)."
+import sys
+from huggingface_hub import hf_hub_download
+hf_hub_download(repo_id=sys.argv[1], filename=sys.argv[2])
+PY
         done
     fi
 

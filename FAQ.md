@@ -314,6 +314,10 @@ works great — but for a security-first, edge-first agent, we're rewriting it a
 - **A path to WebAssembly.** The same Rust core can compile to **WASM** — opening
   the door to running Genie's intelligence in a **browser tab or other sandboxed
   environments**, fully on-device, with no install at all. :)
+- **Native Windows in the future.** A single Rust binary cross-compiles cleanly,
+  so beyond today's macOS focus (with Linux and Windows/WSL2 in alpha) we may
+  ship a **true native Windows build** — no WSL2 required — bringing the same
+  private, offline assistant to more machines.
 
 We're doing this incrementally: the proven bash + Python version keeps shipping
 (now under `python/`) while the Rust rewrite grows alongside it (under `rust/`),

@@ -3,10 +3,10 @@
 # Gemma Genie installer — bootstraps everything on a fresh machine.
 #
 #   # Python implementation (bash + Python helpers, the default):
-#   curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/python/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/install.sh | bash
 #
 #   # Rust single-binary build (downloads the prebuilt genie for your OS/arch):
-#   curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/python/install.sh | bash -s -- --rust
+#   curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/install.sh | bash -s -- --rust
 #
 # Idempotent: safe to re-run. If you delete ~/.genie (the vector cache) or are on
 # a brand-new laptop, re-running this brings everything back, including the
@@ -52,11 +52,18 @@ say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# Where am I running from? (a local checkout vs. piped through curl)
+# Where am I running from? (a local checkout vs. piped through curl) The runtime
+# scripts live in python/; this install.sh sits at the repo root. Support both
+# the root layout (scripts in ./python/) and running with scripts alongside.
 SELF="${BASH_SOURCE[0]:-}"
 SRC_DIR=""
-if [ -n "$SELF" ] && [ -f "$SELF" ] && [ -f "$(dirname "$SELF")/genie" ]; then
-    SRC_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+if [ -n "$SELF" ] && [ -f "$SELF" ]; then
+    self_dir="$(cd "$(dirname "$SELF")" && pwd)"
+    if [ -f "$self_dir/genie" ]; then
+        SRC_DIR="$self_dir"            # install.sh alongside the scripts
+    elif [ -f "$self_dir/python/genie" ]; then
+        SRC_DIR="$self_dir/python"     # install.sh at repo root, scripts in python/
+    fi
 fi
 
 # Flags.

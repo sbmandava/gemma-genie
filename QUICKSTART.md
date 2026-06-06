@@ -9,7 +9,7 @@ One command bootstraps everything (`uv`/`uvx`, the Gemma model weights, the
 embedder, and a `genie` symlink on your `PATH`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/python/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/install.sh | bash
 ```
 
 The installer is idempotent — re-run it any time to repair an install. First run
@@ -23,7 +23,7 @@ OS/arch (no Python at runtime) and sets up the same model/runtime. You don't nee
 to know any paths:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/python/install.sh | bash -s -- --rust
+curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/install.sh | bash -s -- --rust
 ```
 
 Prebuilt CLIs are published for **x86_64 Linux** and **Apple-Silicon macOS**;

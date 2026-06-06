@@ -87,6 +87,50 @@ Every `genie --ask` automatically consults both — no extra steps.
 
 ---
 
+## For startup & small-business owners
+
+### "Don't I need OpenAI or Gemini to do this?"
+
+**No — not for everyday document work.** Summarizing contracts, extracting action
+items, answering questions across a folder of files, pulling figures out of
+spreadsheets — a modern on-device model like **Gemma 4 E4B** handles these well,
+right on your laptop. No cloud account, no API key, no credit card.
+
+### "Wait — AI can run offline, without the cloud?"
+
+Yes. Many people assume "AI = ChatGPT in a browser tab." But capable models now
+run **locally on your own hardware**. Gemma Genie downloads the model once, then
+every question runs on your machine — on a plane, in a clinic, behind a corporate
+firewall — with nothing sent anywhere.
+
+### "What does it cost to run?"
+
+**$0 per question.** No subscription, no per-token API bills, no usage metering.
+The only cost is the laptop you already own plus a one-time model download.
+Compare that to cloud pricing that grows with every employee and every query.
+
+### "Is it private enough for client or regulated data?"
+
+Your files never leave the device — no third-party processor, no external
+data-retention policy in the loop. That makes it a natural fit for NDAs, client-
+confidential material, legal/financial/health documents, and air-gapped setups.
+(You're still responsible for your own device security.)
+
+### "When would I still want a cloud model (OpenAI / Gemini)?"
+
+Being honest: cloud frontier models still lead for the hardest reasoning,
+very large context windows, the latest world knowledge, image generation, and
+massive batch jobs. Gemma Genie targets the **~80% of everyday document tasks**
+you can do privately and for free — keep the cloud for the heavy, non-sensitive
+20% when you truly need it. Plenty of businesses run both.
+
+### "Do I need an AI team or a special server?"
+
+No. One `curl` command installs everything, and a typical MacBook is enough — no
+GPUs to provision, no infrastructure to maintain, no fine-tuning required.
+
+---
+
 ## Working examples
 
 ```bash

@@ -164,3 +164,7 @@ without the cloud. See Unovie.AI's
 [Edge AI whitepaper](https://unovie.ai/resources/edge-ai-whitepaper) for the
 overarching goals, and the [FAQ](FAQ.md) for more. Thanks to **Unovie.AI** for
 sponsoring this open project.
+
+## About the author
+
+Created by **[Suresh Mandava](https://www.linkedin.com/in/mandavasuresh)**.

@@ -6,6 +6,8 @@ pub mod backend;
 pub mod cli;
 pub mod config;
 pub mod doctor;
+#[cfg(feature = "ffi")]
+pub mod ffi;
 pub mod graph;
 pub mod llm;
 pub mod models;

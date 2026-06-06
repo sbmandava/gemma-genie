@@ -244,3 +244,23 @@ fn verify_models_ok() {
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     assert!(String::from_utf8_lossy(&out.stdout).contains("verified"));
 }
+
+// ---- M6 in-process FFI (only compiled with --features ffi) ----
+
+#[cfg(feature = "ffi")]
+#[test]
+#[ignore = "links liblitert-lm.so + runs the model in-process; slow"]
+fn ffi_in_process_generate() {
+    let out = genie()
+        .env("GENIE_CACHE_DB", scratch("ffi-none"))
+        .env("GENIE_GRAPH_DB", scratch("ffi-none2"))
+        .args(["--ask", "why is the sky blue, in one sentence"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout).to_lowercase();
+    assert!(s.contains("scatter") || s.contains("blue"), "unexpected answer: {s}");
+    // Must NOT have fallen back to the subprocess.
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!err.contains("using subprocess"), "FFI fell back to subprocess: {err}");
+}

@@ -35,6 +35,21 @@ enum Action {
 
 /// Run the model on an already-built prompt (plain ask or RAG-built prompt).
 pub fn generate(cfg: &Config, prompt: String) -> Result<()> {
+    // M6: with `--features ffi`, run in-process via litert-lm's C API; fall back
+    // to the subprocess path on any error.
+    #[cfg(feature = "ffi")]
+    {
+        if let Some(mp) = cfg.model_path() {
+            let backend = crate::backend::resolve(cfg);
+            match crate::ffi::generate(&mp.to_string_lossy(), &backend, &prompt) {
+                Ok(text) => {
+                    println!("{}", text.trim_end());
+                    return Ok(());
+                }
+                Err(e) => eprintln!("genie: in-process FFI failed ({e}); using subprocess"),
+            }
+        }
+    }
     run(cfg, Action::Ask(prompt))
 }
 

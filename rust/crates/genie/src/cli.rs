@@ -67,6 +67,10 @@ pub struct Cli {
     #[arg(long)]
     pub uninstall: bool,
 
+    /// Assume "yes" to confirmations (e.g. --uninstall).
+    #[arg(short = 'y', long)]
+    pub yes: bool,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }

@@ -196,3 +196,51 @@ fn graph_build_stats_and_correlate() {
         rm(p);
     }
 }
+
+// ---- M5 lifecycle (fast: no model) ----
+
+#[test]
+fn uninstall_guard_refuses_without_yes() {
+    use std::process::Stdio;
+    let gdir = scratch("u-guard-genie");
+    let hf = scratch("u-guard-hf");
+    rm(&gdir);
+    rm(&hf);
+    std::fs::create_dir_all(&gdir).unwrap();
+    let out = genie()
+        .env("GENIE_DIR", &gdir)
+        .env("HF_HOME", &hf)
+        .arg("--uninstall")
+        .stdin(Stdio::null()) // non-interactive
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "uninstall must refuse without --yes when non-interactive");
+    assert!(Path::new(&gdir).exists(), "must not delete anything when refused");
+    rm(&gdir);
+}
+
+#[test]
+fn uninstall_yes_removes_isolated_data() {
+    let gdir = scratch("u-yes-genie");
+    let hf = scratch("u-yes-hf");
+    rm(&gdir);
+    rm(&hf);
+    std::fs::create_dir_all(format!("{gdir}/genie-cache.db")).unwrap();
+    std::fs::write(format!("{gdir}/backend"), "gpu").unwrap();
+    let out = genie()
+        .env("GENIE_DIR", &gdir)
+        .env("HF_HOME", &hf)
+        .args(["--uninstall", "--yes"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(!Path::new(&gdir).exists(), "genie dir should be removed");
+}
+
+#[test]
+#[ignore = "hits the HF hub (network) to verify model integrity; slow"]
+fn verify_models_ok() {
+    let out = genie().arg("--verify-models").output().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("verified"));
+}

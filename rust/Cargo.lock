@@ -2517,6 +2517,7 @@ dependencies = [
  "arrow-schema",
  "clap",
  "futures",
+ "hf-hub",
  "lancedb",
  "lbug",
  "liteparse",

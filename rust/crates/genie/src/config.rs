@@ -34,7 +34,7 @@ impl Config {
     pub fn load(model_override: Option<&str>) -> Result<Config> {
         let home = PathBuf::from(std::env::var("HOME").context("HOME is not set")?);
         let hf_home = env_path("HF_HOME", home.join(".cache/huggingface"));
-        let genie_dir = home.join(".genie");
+        let genie_dir = env_path("GENIE_DIR", home.join(".genie"));
         let backend_cache = env_path("GENIE_BACKEND_CACHE", genie_dir.join("backend"));
         let model_default_file =
             env_path("GENIE_MODEL_DEFAULT_FILE", genie_dir.join("model_default"));

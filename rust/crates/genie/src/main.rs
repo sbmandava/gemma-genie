@@ -24,10 +24,10 @@ fn main() -> Result<()> {
 
     // Standalone flags.
     if cli.verify_models {
-        return models::verify();
+        return models::verify(&cfg);
     }
     if cli.uninstall {
-        return models::uninstall();
+        return models::uninstall(&cfg, cli.yes);
     }
     if cli.graph_stats {
         return graph::stats(&cfg);

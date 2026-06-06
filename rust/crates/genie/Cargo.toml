@@ -26,6 +26,9 @@ lancedb = { path = "/opt/projects/unovie/research/lancedb/rust/lancedb" }
 # M4 — correlation graph (needs CMake + g++-13 to build the ladybug C++ engine)
 lbug = { path = "/opt/projects/unovie/research/ladybug-rust" }
 
+# M5 — model lifecycle (download/verify); matches model2vec-rs's hf-hub
+hf-hub = { version = "0.4", default-features = false, features = ["ureq"] }
+
 # ---------------------------------------------------------------------------
 # Added per milestone. Use the LOCAL research/ sources (see ../../CLAUDE.md);
 # do not switch to crates.io without checking the local repo first.

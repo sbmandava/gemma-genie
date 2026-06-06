@@ -39,7 +39,7 @@ CHUNK_SIZE="${GENIE_CHUNK_SIZE:-}"    # chars per chunk (empty = helper default)
 # Pin the litert-lm runtime so uvx resolves a known-good version instead of
 # silently pulling a newer (possibly breaking) release on a cache miss.
 LITERT_VERSION="0.13.1"
-VERSION="0.2.2"
+VERSION="0.2.3"
 
 # All models (Gemma weights + the model2vec embedder) live in the HuggingFace
 # hub cache: ${HF_HOME:-$HOME/.cache/huggingface}/hub

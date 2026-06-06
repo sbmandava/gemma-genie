@@ -336,14 +336,23 @@ async fn search_all(cfg: &Config, query: &str) -> Result<Vec<(String, String)>> 
     let qv = model.encode_single(query);
     let mut scored: Vec<(f32, String, String)> = Vec::new();
     for name in db.table_names().execute().await? {
-        let tbl = db.open_table(&name).execute().await?;
-        let results: Vec<RecordBatch> = match tbl
-            .query()
-            .limit(cfg.rag_topk)
-            .nearest_to(qv.as_slice())
-            .and_then(|q| Ok(q))
-        {
-            Ok(q) => q.execute().await?.try_collect().await?,
+        let tbl = match db.open_table(&name).execute().await {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        // Skip any table we can't query — e.g. a foreign/older cache whose
+        // vector dimension differs from this embedder — instead of failing the
+        // whole search.
+        let query = match tbl.query().limit(cfg.rag_topk).nearest_to(qv.as_slice()) {
+            Ok(q) => q,
+            Err(_) => continue,
+        };
+        let stream = match query.execute().await {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let results: Vec<RecordBatch> = match stream.try_collect().await {
+            Ok(r) => r,
             Err(_) => continue,
         };
         for rb in &results {

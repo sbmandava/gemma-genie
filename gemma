@@ -207,14 +207,20 @@ if [[ $inputs -eq 1 && "$model_explicit" == false ]]; then
     model_variant="e4b"
 fi
 
-# Run models straight from the HuggingFace hub cache (~/.cache/huggingface/hub)
-# via --from-huggingface-repo, so weights are stored only there and litert-lm
-# never makes a second copy under ~/.litert-lm.
+# Models live in the HuggingFace hub cache (~/.cache/huggingface/hub). If the
+# file is already cached we run it directly from that path — no network check,
+# no "Downloading…" message. Only the first run (cache miss) pulls from HF.
 case "$model_variant" in
     e2b) HF_REPO="litert-community/gemma-4-E2B-it-litert-lm"; MODEL_FILE="gemma-4-E2B-it.litertlm" ;;
     e4b) HF_REPO="litert-community/gemma-4-E4B-it-litert-lm"; MODEL_FILE="gemma-4-E4B-it.litertlm" ;;
 esac
-LITERT_RUN=(uvx litert-lm run --from-huggingface-repo "$HF_REPO" "$MODEL_FILE")
+MODEL_SNAPS="$HF_HOME/hub/models--${HF_REPO//\//--}/snapshots"
+MODEL_PATH="$(find "$MODEL_SNAPS" -name "$MODEL_FILE" 2>/dev/null | head -1)"
+if [[ -n "$MODEL_PATH" && -e "$MODEL_PATH" ]]; then
+    LITERT_RUN=(uvx litert-lm run "$MODEL_PATH")
+else
+    LITERT_RUN=(uvx litert-lm run --from-huggingface-repo "$HF_REPO" "$MODEL_FILE")
+fi
 
 ensure_uvx  # install uv on demand if it's missing
 

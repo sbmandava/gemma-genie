@@ -35,30 +35,53 @@ enum Action {
 
 /// Run the model on an already-built prompt (plain ask or RAG-built prompt).
 pub fn generate(cfg: &Config, prompt: String) -> Result<()> {
-    // M6: with `--features ffi`, run in-process via litert-lm's C API; fall back
-    // to the subprocess path on any error.
     #[cfg(feature = "ffi")]
     {
-        if let Some(mp) = cfg.model_path() {
-            let backend = crate::backend::resolve(cfg);
-            match crate::ffi::generate(&mp.to_string_lossy(), &backend, &prompt) {
-                Ok(text) => {
-                    println!("{}", text.trim_end());
-                    return Ok(());
-                }
-                Err(e) => eprintln!("genie: in-process FFI failed ({e}); using subprocess"),
-            }
+        let msg = serde_json::json!({ "role": "user", "content": prompt }).to_string();
+        if try_ffi(cfg, &msg) {
+            return Ok(());
         }
     }
     run(cfg, Action::Ask(prompt))
 }
 
+// NOTE: vision (--image) and audio (--audio) stay on the subprocess path. The
+// in-process FFI multimodal message path returns no output (the engine accepts
+// the image/audio message but produces nothing — protocol detail still TBD), so
+// routing them through FFI would just fail and fall back, adding a wasted engine
+// init. Text generation is the part that works in-process.
 pub fn describe_image(path: &Path, cfg: &Config, _cli: &Cli) -> Result<()> {
     run(cfg, Action::Image(path.to_string_lossy().into_owned()))
 }
 
 pub fn transcribe_audio(path: &Path, cfg: &Config, _cli: &Cli) -> Result<()> {
     run(cfg, Action::Audio(path.to_string_lossy().into_owned()))
+}
+
+/// Attempt the in-process FFI text path; returns true if it handled the request.
+/// Falls back (returns false) on any error so the caller uses the subprocess.
+#[cfg(feature = "ffi")]
+fn try_ffi(cfg: &Config, message_json: &str) -> bool {
+    let Some(mp) = cfg.model_path() else {
+        return false;
+    };
+    let backend = backend::resolve(cfg);
+    match crate::ffi::run(
+        &mp.to_string_lossy(),
+        &backend,
+        None,
+        None,
+        message_json,
+    ) {
+        Ok(text) => {
+            println!("{}", text.trim_end());
+            true
+        }
+        Err(e) => {
+            eprintln!("genie: in-process FFI failed ({e}); using subprocess");
+            false
+        }
+    }
 }
 
 /// Run the model with automatic CPU fallback: if a GPU run yields no real

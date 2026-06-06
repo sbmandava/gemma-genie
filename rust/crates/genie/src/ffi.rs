@@ -1,9 +1,13 @@
 //! In-process inference via litert-lm's C API (`c/engine.h`), linking the
 //! prebuilt liblitert-lm.so. Optional: enabled with `--features ffi`. M6.
 //!
-//! Uses the conversation API (the path the litert-lm CLI uses), which renders
-//! the chat template internally and exchanges JSON messages — unlike the
-//! low-level session_generate_content, which yields degenerate output.
+//! Uses the conversation API one-shot `send_message` (the path that renders the
+//! chat template internally). Supports text and image/audio (via file-path
+//! message content). Two things were attempted and reverted because they crash
+//! the multithreaded GPU runtime: (a) fd-level filtering of the "Loaded OpenCL"
+//! init line, and (b) the streaming callback (`send_message_stream`). So this
+//! path prints the full answer at once and leaves the cosmetic init line; the
+//! subprocess path streams and filters it.
 #![allow(non_camel_case_types)]
 
 use anyhow::{bail, Result};
@@ -27,6 +31,7 @@ extern "C" {
         audio_backend: *const c_char,
     ) -> *mut LiteRtLmEngineSettings;
     fn litert_lm_engine_settings_delete(s: *mut LiteRtLmEngineSettings);
+    fn litert_lm_engine_settings_set_max_num_images(s: *mut LiteRtLmEngineSettings, n: c_int);
     fn litert_lm_engine_create(s: *const LiteRtLmEngineSettings) -> *mut LiteRtLmEngine;
     fn litert_lm_engine_delete(e: *mut LiteRtLmEngine);
     fn litert_lm_conversation_create(
@@ -44,24 +49,36 @@ extern "C" {
     fn litert_lm_json_response_delete(resp: *mut LiteRtLmJsonResponse);
 }
 
-/// One-shot in-process generation via the conversation API. `backend`="gpu"/"cpu".
-pub fn generate(model_path: &str, backend: &str, prompt: &str) -> Result<String> {
+/// One-shot in-process generation. `message_json` is a conversation message
+/// (text, or a content array with image/audio file paths). Returns the answer.
+pub fn run(
+    model_path: &str,
+    backend: &str,
+    vision_backend: Option<&str>,
+    audio_backend: Option<&str>,
+    message_json: &str,
+) -> Result<String> {
     let mp = CString::new(model_path)?;
     let be = CString::new(backend)?;
-    let msg = serde_json::json!({ "role": "user", "content": prompt }).to_string();
-    let msg_c = CString::new(msg)?;
-    let ctx_c = CString::new("{}")?;
+    let vis = vision_backend.map(|s| CString::new(s).unwrap());
+    let aud = audio_backend.map(|s| CString::new(s).unwrap());
+    let msg = CString::new(message_json)?;
+    let ctx = CString::new("{}")?;
 
     unsafe {
         litert_lm_set_min_log_level(4); // ERROR
         let settings = litert_lm_engine_settings_create(
             mp.as_ptr(),
             be.as_ptr(),
-            std::ptr::null(),
-            std::ptr::null(),
+            vis.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+            aud.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
         );
         if settings.is_null() {
             bail!("litert_lm_engine_settings_create returned NULL");
+        }
+        // Images are only processed when the engine reserves image slots.
+        if vision_backend.is_some() {
+            litert_lm_engine_settings_set_max_num_images(settings, 1);
         }
         let engine = litert_lm_engine_create(settings);
         if engine.is_null() {
@@ -76,16 +93,15 @@ pub fn generate(model_path: &str, backend: &str, prompt: &str) -> Result<String>
         }
         let resp = litert_lm_conversation_send_message(
             conv,
-            msg_c.as_ptr(),
-            ctx_c.as_ptr(),
+            msg.as_ptr(),
+            ctx.as_ptr(),
             std::ptr::null(),
         );
         let mut out = String::new();
         if !resp.is_null() {
             let s = litert_lm_json_response_get_string(resp);
             if !s.is_null() {
-                let json = CStr::from_ptr(s).to_string_lossy().into_owned();
-                out = extract_text(&json);
+                out = extract_text(&CStr::from_ptr(s).to_string_lossy());
             }
             litert_lm_json_response_delete(resp);
         }
@@ -99,7 +115,7 @@ pub fn generate(model_path: &str, backend: &str, prompt: &str) -> Result<String>
     }
 }
 
-/// Pull the assistant text out of the JSON response
+/// Extract assistant text from the JSON response
 /// (`{"content":[{"type":"text","text":"..."}]}`, or simpler shapes).
 fn extract_text(json: &str) -> String {
     let v: serde_json::Value = match serde_json::from_str(json) {

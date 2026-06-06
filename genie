@@ -122,7 +122,7 @@ check_deps() {
         printf '  %-9s %s\n' "[ok]" "LibreOffice (soffice) — enables DOCX/XLSX/PPTX via --doc"
     else
         printf '  %-9s %s\n' "[warn]" "LibreOffice (soffice) not found — DOCX/XLSX/PPTX need it (PDF/images are fine)"
-        printf '  %-9s %s\n' "" "install: brew install --cask libreoffice"
+        printf '  %-9s %s\n' "" "install: $(libreoffice_install_cmd)"
     fi
 
     printf '  %-9s %s\n' "[note]" "liteparse, litert-lm, lancedb, model2vec, ladybug auto-install via uvx on first use"
@@ -181,6 +181,30 @@ detect_total_gb() {  # total system RAM in whole GB
         bytes=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0) * 1024 ))
     fi
     echo $(( bytes / 1024 / 1024 / 1024 ))
+}
+
+# Print the OS-appropriate command to install a *minimal* LibreOffice — just the
+# headless components liteparse needs to convert DOCX/XLSX/PPTX, not the full GUI
+# suite. Used by the dependency check and the --doc guard.
+libreoffice_install_cmd() {
+    case "$(uname)" in
+        Darwin) printf 'brew install --cask libreoffice' ;;
+        Linux)
+            if   command -v apt-get >/dev/null 2>&1; then
+                printf 'sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress'
+            elif command -v dnf >/dev/null 2>&1; then
+                printf 'sudo dnf install -y libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress'
+            elif command -v yum >/dev/null 2>&1; then
+                printf 'sudo yum install -y libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress'
+            elif command -v pacman >/dev/null 2>&1; then
+                printf 'sudo pacman -S --noconfirm libreoffice-still'
+            elif command -v zypper >/dev/null 2>&1; then
+                printf 'sudo zypper install -y libreoffice'
+            else
+                printf 'install LibreOffice (it provides the `soffice` command)'
+            fi ;;
+        *) printf 'install LibreOffice (it provides the `soffice` command)' ;;
+    esac
 }
 
 verify_one_model() {  # repo, filename — compare on-disk sha256 to the HF LFS blob hash
@@ -325,12 +349,36 @@ abspath_of() {  # absolute path of a (possibly relative) file path
 # context (lines marked "[source: <path>]").
 print_sources() {
     local ctx="$1" srcs
+    # The grep returns non-zero when there are no [source: ...] markers (e.g. a
+    # plain question with no indexed files). Under `set -euo pipefail` that would
+    # otherwise abort the whole script right after the answer was printed, so the
+    # `|| true` keeps an empty result from being treated as a failure.
     srcs=$(printf '%s\n' "$ctx" | grep -oE '\[source: [^]]+\]' \
-        | sed -E 's/^\[source: (.*)\]$/\1/' | awk '!seen[$0]++')
+        | sed -E 's/^\[source: (.*)\]$/\1/' | awk '!seen[$0]++') || true
     if [[ -n "$srcs" ]]; then
         printf '\nSources:\n'
         while IFS= read -r s; do [[ -n "$s" ]] && printf '  - %s\n' "$s"; done <<< "$srcs"
     fi
+}
+
+# Known-harmless chatter the GPU/OpenCL backend emits. These come from the prebuilt
+# litert-lm runtime's underlying GPU delegate (not from genie or LiteRT-LM itself,
+# which already raises its log level to ERROR) and only clutter the output. The
+# "Warning: maxDynamic..." lines go to stderr; the "Loaded OpenCL library" line is
+# printed to stdout at init, before any answer tokens — so we filter both streams.
+LITERT_NOISE_RE='maxDynamicUniformBuffersPerPipelineLayout|maxDynamicStorageBuffersPerPipelineLayout|Loaded OpenCL library with dlopen'
+
+# Run the on-device model. Three jobs beyond just invoking it:
+#   1. Drop the GPU backend noise from stderr.
+#   2. Drop the init noise from stdout. grep --line-buffered keeps the answer
+#      streaming as it is generated (line by line) rather than batching it.
+#   3. Tolerate a non-zero exit from the runtime *after* it has already produced an
+#      answer — the litert-lm GPU backend can return non-zero during teardown, and
+#      we don't want `set -e` to turn a delivered answer into a failed command.
+run_llm() {
+    "${LITERT_RUN[@]}" "$@" \
+        2> >(grep -vE "$LITERT_NOISE_RE" >&2) \
+        | grep --line-buffered -vE "$LITERT_NOISE_RE" || true
 }
 
 # Pick the compute backend: honor GENIE_BACKEND, else use the cached choice,
@@ -517,7 +565,7 @@ Use the following excerpts from files in \"$dir_path\" to answer
 (each excerpt is labeled with its source file):
 
 $context"
-            "${LITERT_RUN[@]}" --backend="$BACKEND" --prompt="$prompt"
+            run_llm --backend="$BACKEND" --prompt="$prompt"
             print_sources "$context"
             # Auto-update the correlation graph in the BACKGROUND (LLM extraction
             # for directories is slow on first build; detach so the answer is
@@ -537,6 +585,20 @@ $context"
             extracted="$(cat "$txt_path")"
         elif [[ -n "$doc_path" ]]; then
             src="$doc_path"
+            # Office formats (DOCX/XLSX/PPTX and legacy/ODF variants) require
+            # LibreOffice's `soffice` for liteparse to convert them; PDFs and
+            # images do not. Fail early with an actionable, OS-aware install
+            # command instead of a cryptic liteparse error deeper down.
+            doc_ext="$(printf '%s' "${doc_path##*.}" | tr '[:upper:]' '[:lower:]')"
+            case "$doc_ext" in
+                docx|doc|xlsx|xls|pptx|ppt|odt|ods|odp)
+                    if ! command -v soffice >/dev/null 2>&1; then
+                        echo "Error: parsing '$doc_path' needs LibreOffice, but the 'soffice' command was not found." >&2
+                        echo "Install the minimal LibreOffice components with:" >&2
+                        echo "  $(libreoffice_install_cmd)" >&2
+                        exit 1
+                    fi ;;
+            esac
             parse_args=(--quiet "$doc_path")
             [[ -n "$pages" ]] && parse_args+=(--target-pages "$pages")
             extracted="$(uvx --from liteparse==2.0.6 lit parse "${parse_args[@]}")"
@@ -611,7 +673,7 @@ $kb_ctx}"
             fi
         fi
 
-        "${LITERT_RUN[@]}" \
+        run_llm \
             --backend="$BACKEND" \
             --prompt="$prompt"
         print_sources "$src_footer"
@@ -626,12 +688,12 @@ $kb_ctx}"
         fi
         ;;
     --image)
-        "${LITERT_RUN[@]}" \
+        run_llm \
             --backend="$BACKEND" --vision-backend "$BACKEND" \
             --attachment "$arg" --prompt describe
         ;;
     --audio)
-        "${LITERT_RUN[@]}" \
+        run_llm \
             --backend="$BACKEND" --audio-backend cpu \
             --attachment "$arg" --prompt transcribe
         ;;

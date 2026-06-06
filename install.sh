@@ -56,21 +56,50 @@ have uvx || { warn "uvx still not on PATH; open a new shell and re-run."; exit 1
 say "uv: $(uv --version 2>/dev/null || echo present)"
 
 # ---------------------------------------------------------------------------
-# 2. LibreOffice (macOS) — needed by liteparse for DOCX/XLSX/PPTX
+# 2. LibreOffice — needed by liteparse for DOCX/XLSX/PPTX (PDF/images don't need it)
+#    We install only the minimal headless components, not the full GUI suite.
 # ---------------------------------------------------------------------------
-if [ "$(uname)" = "Darwin" ] && ! have soffice; then
-    if ! have brew; then
-        say "Installing Homebrew..."
-        NONINTERACTIVE=1 /bin/bash -c \
-          "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || \
-          warn "Homebrew install failed"
-        [ -x /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
-        [ -x /usr/local/bin/brew ]    && eval "$(/usr/local/bin/brew shellenv)"
-    fi
-    if have brew; then
-        say "Installing LibreOffice (for DOCX/XLSX/PPTX parsing)..."
-        brew install --cask libreoffice || warn "LibreOffice install failed (PDF/images still work)"
-    fi
+libreoffice_install() {
+    case "$(uname)" in
+        Darwin)
+            if ! have brew; then
+                say "Installing Homebrew..."
+                NONINTERACTIVE=1 /bin/bash -c \
+                  "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || \
+                  { warn "Homebrew install failed"; return 1; }
+                [ -x /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+                [ -x /usr/local/bin/brew ]    && eval "$(/usr/local/bin/brew shellenv)"
+            fi
+            have brew && brew install --cask libreoffice
+            ;;
+        Linux)
+            local SUDO=""
+            [ "$(id -u)" -ne 0 ] && have sudo && SUDO="sudo"
+            # Minimal component set that still converts docx/xlsx/pptx headlessly.
+            if have apt-get; then
+                $SUDO apt-get update && \
+                $SUDO apt-get install -y --no-install-recommends \
+                    libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress
+            elif have dnf; then
+                $SUDO dnf install -y libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress
+            elif have yum; then
+                $SUDO yum install -y libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress
+            elif have pacman; then
+                $SUDO pacman -S --noconfirm libreoffice-still
+            elif have zypper; then
+                $SUDO zypper install -y libreoffice
+            else
+                warn "No known package manager; install LibreOffice manually (it provides 'soffice')."
+                return 1
+            fi
+            ;;
+        *) warn "Unsupported OS for automatic LibreOffice install."; return 1 ;;
+    esac
+}
+
+if ! have soffice; then
+    say "Installing minimal LibreOffice (for DOCX/XLSX/PPTX parsing; PDF/images work without it)..."
+    libreoffice_install || warn "LibreOffice install failed (PDF/images still work; office docs need 'soffice')."
 fi
 
 # ---------------------------------------------------------------------------

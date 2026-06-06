@@ -26,6 +26,8 @@ pub struct Config {
     pub rag_topk: usize,
     pub chunk_size: usize,
     pub rag_ttl: u64,
+    // --- graph (M4) ---
+    pub graph_db: PathBuf,
 }
 
 impl Config {
@@ -43,6 +45,7 @@ impl Config {
         let rag_topk = env_usize("GENIE_RAG_TOPK", 15);
         let chunk_size = env_usize("GENIE_CHUNK_SIZE", 1000);
         let rag_ttl = env_usize("GENIE_CACHE_TTL", 86400) as u64;
+        let graph_db = env_path("GENIE_GRAPH_DB", genie_dir.join("genie-graph.lbug"));
         Ok(Config {
             home,
             genie_dir,
@@ -56,6 +59,7 @@ impl Config {
             rag_topk,
             chunk_size,
             rag_ttl,
+            graph_db,
         })
     }
 

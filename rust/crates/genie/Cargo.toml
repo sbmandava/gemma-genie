@@ -23,6 +23,9 @@ liteparse = { path = "/opt/projects/unovie/research/liteparse/crates/liteparse" 
 model2vec-rs = { path = "/opt/projects/unovie/research/model2vec-rs" }
 lancedb = { path = "/opt/projects/unovie/research/lancedb/rust/lancedb" }
 
+# M4 — correlation graph (needs CMake + g++-13 to build the ladybug C++ engine)
+lbug = { path = "/opt/projects/unovie/research/ladybug-rust" }
+
 # ---------------------------------------------------------------------------
 # Added per milestone. Use the LOCAL research/ sources (see ../../CLAUDE.md);
 # do not switch to crates.io without checking the local repo first.

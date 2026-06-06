@@ -30,10 +30,10 @@ fn main() -> Result<()> {
         return models::uninstall();
     }
     if cli.graph_stats {
-        return graph::stats();
+        return graph::stats(&cfg);
     }
     if let Some(q) = &cli.graph_query {
-        return graph::query(q);
+        return graph::query(&cfg, q);
     }
 
     // Primary actions.

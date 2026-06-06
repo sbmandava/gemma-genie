@@ -53,15 +53,20 @@ pub fn ask(question: &str, cli: &Cli, cfg: &Config) -> Result<()> {
 /// Returns Ok(true) if it answered from the KB, Ok(false) if there was nothing
 /// indexed (caller should fall back to a plain model answer).
 pub fn ask_kb(question: &str, cfg: &Config) -> Result<bool> {
-    if !cfg.cache_db.exists() {
+    let excerpts = if cfg.cache_db.exists() {
+        let rt = tokio::runtime::Runtime::new()?;
+        let e = rt.block_on(search_all(cfg, question))?;
+        drop(rt);
+        e
+    } else {
+        Vec::new()
+    };
+    let graph_ctx = crate::graph::correlate(cfg, question);
+
+    if excerpts.is_empty() && graph_ctx.is_none() {
         return Ok(false);
     }
-    let rt = tokio::runtime::Runtime::new()?;
-    let excerpts = rt.block_on(search_all(cfg, question))?;
-    drop(rt);
-    if excerpts.is_empty() {
-        return Ok(false);
-    }
+
     let mut ctx = String::new();
     let mut sources = Vec::new();
     for (source, chunk) in &excerpts {
@@ -70,10 +75,15 @@ pub fn ask_kb(question: &str, cfg: &Config) -> Result<bool> {
             sources.push(source.clone());
         }
     }
+    let graph_block = match &graph_ctx {
+        Some(g) => format!("\nKnowledge-graph relationships:\n{g}\n"),
+        None => String::new(),
+    };
     let prompt = format!(
-        "{question}\n\nAnswer using the document excerpts below (retrieved from the \
-         user's indexed data). Ground every claim in this evidence and pay attention \
-         to source file names.\n\nDocument excerpts:\n{ctx}"
+        "{question}\n\nAnswer using the knowledge-graph relationships and document \
+         excerpts below (retrieved from the user's indexed data). Ground every claim \
+         in this evidence, pay attention to source file names, and use the graph \
+         relationships to disambiguate how entities relate.\n{graph_block}\nDocument excerpts:\n{ctx}"
     );
     llm::generate(cfg, prompt)?;
     print_sources(&sources);
@@ -98,6 +108,9 @@ async fn prepare_doc(question: &str, cli: &Cli, cfg: &Config) -> Result<(String,
         .ok_or_else(|| anyhow::anyhow!("no --doc/--txt path"))?;
     let src_disp = abspath(path);
     let text = parse::extract(path, cli.pages.as_deref()).await?;
+
+    // Update the correlation graph from this file's text (best-effort).
+    let _ = crate::graph::update_file_text(cfg, &src_disp, &file_sig(path), &text);
 
     if text.len() <= cfg.rag_threshold {
         let prompt =
@@ -224,6 +237,8 @@ async fn ingest_dir(
             add_chunks(db, name, &chunks, &src, &sig, model, true).await?;
             created = true;
         }
+        // Update the correlation graph for this (re)embedded file (best-effort).
+        let _ = crate::graph::update_file_text(cfg, &src, &sig, &text);
         sigs.insert(src, sig);
     }
     save_sigs(cfg, name, &sigs);
@@ -379,16 +394,7 @@ async fn cache_impl(action: &str, cfg: &Config) -> Result<()> {
             if cfg.cache_db.exists() {
                 std::fs::remove_dir_all(&cfg.cache_db).ok();
             }
-            // remove sidecar sig files
-            if let Ok(rd) = std::fs::read_dir(&cfg.genie_dir) {
-                for e in rd.flatten() {
-                    let p = e.path();
-                    if p.extension().map(|x| x == "sigs").unwrap_or(false) {
-                        std::fs::remove_file(p).ok();
-                    }
-                }
-            }
-            let _ = std::fs::remove_file(usage_path(cfg));
+            std::fs::remove_dir_all(meta_dir(cfg)).ok();
             println!("Cleared vector cache at {}", cfg.cache_db.display());
         }
         "list" | "info" => {
@@ -425,7 +431,7 @@ async fn prune_expired(db: &lancedb::Connection, cfg: &Config) {
             if let Some(&last) = usage.get(&n) {
                 if now.saturating_sub(last) > cfg.rag_ttl {
                     let _ = db.drop_table(&n, &[]).await;
-                    let _ = std::fs::remove_file(cfg.genie_dir.join(format!("{n}.sigs")));
+                    let _ = std::fs::remove_file(sigs_path(cfg, &n));
                     usage.remove(&n);
                     changed = true;
                 }
@@ -561,9 +567,15 @@ fn now_secs() -> u64 {
 }
 
 // --- tiny line-based persistence (avoids a serde dep) ---
+// Co-located with the cache DB (not genie_dir) so they reset together even when
+// GENIE_CACHE_DB points elsewhere.
+
+fn meta_dir(cfg: &Config) -> PathBuf {
+    cfg.cache_db.with_extension("meta")
+}
 
 fn usage_path(cfg: &Config) -> PathBuf {
-    cfg.genie_dir.join("cache-usage.txt")
+    meta_dir(cfg).join("usage.txt")
 }
 
 fn load_usage(cfg: &Config) -> HashMap<String, u64> {
@@ -581,13 +593,13 @@ fn load_usage(cfg: &Config) -> HashMap<String, u64> {
 }
 
 fn save_usage(cfg: &Config, m: &HashMap<String, u64>) {
-    let _ = std::fs::create_dir_all(&cfg.genie_dir);
+    let _ = std::fs::create_dir_all(meta_dir(cfg));
     let body: String = m.iter().map(|(n, t)| format!("{n}\t{t}\n")).collect();
     let _ = std::fs::write(usage_path(cfg), body);
 }
 
 fn sigs_path(cfg: &Config, name: &str) -> PathBuf {
-    cfg.genie_dir.join(format!("{name}.sigs"))
+    meta_dir(cfg).join(format!("{name}.sigs"))
 }
 
 fn load_sigs(cfg: &Config, name: &str) -> HashMap<String, String> {
@@ -603,7 +615,7 @@ fn load_sigs(cfg: &Config, name: &str) -> HashMap<String, String> {
 }
 
 fn save_sigs(cfg: &Config, name: &str, m: &HashMap<String, String>) {
-    let _ = std::fs::create_dir_all(&cfg.genie_dir);
+    let _ = std::fs::create_dir_all(meta_dir(cfg));
     let body: String = m.iter().map(|(src, sig)| format!("{sig}\t{src}\n")).collect();
     let _ = std::fs::write(sigs_path(cfg, name), body);
 }

@@ -102,6 +102,7 @@ fn dir_kb_incremental_and_cache() {
     let cache = format!("{}/target/test-m3-cache", env!("CARGO_MANIFEST_DIR"));
     let dir = format!("{}/target/test-m3-dir", env!("CARGO_MANIFEST_DIR"));
     let _ = std::fs::remove_dir_all(&cache);
+    let _ = std::fs::remove_dir_all(format!("{cache}.meta"));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(format!("{dir}/apollo.txt"), "Project Apollo is owned by Jane Smith.\n").unwrap();
     std::fs::write(format!("{dir}/zeus.md"), "Project Zeus is owned by Bob Jones.\n").unwrap();
@@ -134,4 +135,50 @@ fn dir_kb_incremental_and_cache() {
     // clear empties it.
     let _ = genie().env("GENIE_CACHE_DB", &cache).args(["cache", "clear"]).output().unwrap();
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+#[ignore = "indexes a dir + builds the graph + runs the model; slow"]
+fn graph_build_stats_and_correlate() {
+    let cache = format!("{}/target/test-m4-cache", env!("CARGO_MANIFEST_DIR"));
+    let graph = format!("{}/target/test-m4-graph", env!("CARGO_MANIFEST_DIR"));
+    let dir = format!("{}/target/test-m4-dir", env!("CARGO_MANIFEST_DIR"));
+    for p in [&cache, &format!("{cache}.meta"), &graph, &dir] {
+        let _ = std::fs::remove_dir_all(p);
+    }
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(format!("{dir}/apollo.txt"), "Project Apollo is owned by Jane Smith and built by Acme Corporation.\n").unwrap();
+    std::fs::write(format!("{dir}/zeus.txt"), "Project Zeus is owned by Bob Jones. Acme Corporation is the auditor.\n").unwrap();
+
+    let env = |c: &mut Command| {
+        c.env("GENIE_CACHE_DB", &cache).env("GENIE_GRAPH_DB", &graph);
+    };
+
+    // Index (also populates the graph).
+    let mut c = genie();
+    env(&mut c);
+    let out = c.args(["--ask", "list", "--dir", &dir]).output().unwrap();
+    assert!(out.status.success());
+
+    // graph-stats reports files/entities and Acme as a top hub.
+    let mut c = genie();
+    env(&mut c);
+    let out = c.arg("--graph-stats").output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("Files:"), "stats: {s}");
+    assert!(s.contains("Acme Corporation"), "expected Acme entity: {s}");
+
+    // graph-query returns Mentions rows.
+    let mut c = genie();
+    env(&mut c);
+    let out = c
+        .args(["--graph-query", "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name, e.name LIMIT 10;"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stdout).contains("Acme Corporation"));
+
+    for p in [&cache, &format!("{cache}.meta"), &graph, &dir] {
+        let _ = std::fs::remove_dir_all(p);
+    }
 }

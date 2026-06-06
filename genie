@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Resolve the real location of this script, following symlinks. This lets the
-# script be invoked via a symlink (e.g. /usr/local/bin/gemma -> the real script)
+# script be invoked via a symlink (e.g. /usr/local/bin/genie -> the real script)
 # while still finding its Python helper next to it.
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
@@ -154,17 +154,17 @@ maybe_self_update() {
     fi
     mkdir -p "$(dirname "$UPDATE_STAMP")"; date +%s > "$UPDATE_STAMP"
     local remote_ver
-    remote_ver=$(curl -fsSL "$RAW_BASE/gemma" 2>/dev/null | grep -m1 '^VERSION=' | cut -d'"' -f2)
+    remote_ver=$(curl -fsSL "$RAW_BASE/genie" 2>/dev/null | grep -m1 '^VERSION=' | cut -d'"' -f2)
     [[ -n "$remote_ver" ]] || return 0
     if version_gt "$remote_ver" "$VERSION"; then
-        echo "gemma: upgrading $VERSION -> $remote_ver..." >&2
+        echo "genie: upgrading $VERSION -> $remote_ver..." >&2
         local f ok=1
-        for f in gemma gemma_rag.py gemma_graph.py install.sh; do
+        for f in genie gemma_rag.py gemma_graph.py install.sh; do
             curl -fsSL "$RAW_BASE/$f" -o "$SCRIPT_DIR/.$f.new" 2>/dev/null \
                 && mv "$SCRIPT_DIR/.$f.new" "$SCRIPT_DIR/$f" || { ok=0; rm -f "$SCRIPT_DIR/.$f.new"; }
         done
-        chmod +x "$SCRIPT_DIR/gemma" 2>/dev/null
-        [[ $ok -eq 1 ]] && echo "gemma: upgraded to $remote_ver (effective next run)." >&2
+        chmod +x "$SCRIPT_DIR/genie" 2>/dev/null
+        [[ $ok -eq 1 ]] && echo "genie: upgraded to $remote_ver (effective next run)." >&2
     fi
 }
 
@@ -277,8 +277,8 @@ pages=""
 
 # Subcommands / standalone flags (must be the first argument).
 case "${1:-}" in
-    -V|--version|version) echo "gemma $VERSION"; exit 0 ;;
-    doctor)               echo "gemma $VERSION"; check_deps; exit 0 ;;
+    -V|--version|version) echo "Gemma Genie $VERSION"; exit 0 ;;
+    doctor)               echo "Gemma Genie $VERSION"; check_deps; exit 0 ;;
     cache)                shift; cmd_cache "$@"; exit $? ;;
     --graph-stats)        mkdir -p "$(dirname "$GRAPH_DB")"; run_graph --mode stats; exit $? ;;
     --graph-query)
@@ -331,7 +331,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -V|--version)
-            echo "gemma $VERSION"; exit 0
+            echo "Gemma Genie $VERSION"; exit 0
             ;;
         --ask|--image|--audio)
             [[ -z "$action" ]] || { echo "Error: only one of --ask/--image/--audio allowed" >&2; exit 1; }

@@ -1,9 +1,14 @@
-# gemma CLI
+# Gemma Genie 🧞
 
-A small local-LLM CLI built on Google's **Gemma 4** models — **E2B** (fast) and
-**E4B** (stronger) — run on-device via
+<p align="center">
+  <img src="genie.png" alt="Gemma Genie" width="220">
+</p>
+
+**Gemma Genie** is a private, offline AI assistant for your laptop — a CLI
+(`genie`) built on Google's **Gemma 4** models — **E2B** (fast) and **E4B**
+(stronger) — run on-device via
 [`litert-lm`](https://github.com/google-ai-edge/litert-lm). Ask questions,
-analyze documents, and query whole directories — all locally.
+analyze documents, and query whole folders — all locally, no cloud.
 
 ## Supported platforms
 
@@ -27,62 +32,62 @@ The installer is idempotent and bootstraps **everything** on a fresh machine:
 - LibreOffice (macOS, for DOCX/XLSX/PPTX parsing)
 - `liteparse`, `lancedb`, `model2vec` (fetched via `uvx`)
 - the Gemma model weights (downloaded into the HuggingFace hub cache)
-- a `gemma` symlink on your `PATH`
+- a `genie` symlink on your `PATH`
 
 Re-run it any time to repair an install or after deleting `~/.gemma`.
 
 > **Runs offline.** Network is only needed for the one-time install (downloading
 > `uv`, the Python deps, and the Gemma model weights). Once those are cached,
-> `gemma` runs entirely on-device from the command line — no cloud, no API keys,
+> `genie` runs entirely on-device from the command line — no cloud, no API keys,
 > no internet required. Your documents never leave the machine.
 
 ## Usage
 
 ```bash
-gemma --ask "Explain TCP slow start in two sentences"
+genie --ask "Explain TCP slow start in two sentences"
 
 # Analyze a single document (PDF/DOCX/XLSX/PPTX/image)
-gemma --ask "Summarize the key risks" --doc report.pdf
-gemma --ask "Which sheet has the budget?" --doc plan.xlsx --pages "1-3"
+genie --ask "Summarize the key risks" --doc report.pdf
+genie --ask "Which sheet has the budget?" --doc plan.xlsx --pages "1-3"
 
 # Plain text / CSV
-gemma --ask "Who is blocked?" --txt tasks.csv
+genie --ask "Who is blocked?" --txt tasks.csv
 
 # Query an entire folder (recursive knowledge base)
-gemma --ask "What's our vacation policy and who owns project X?" --dir ~/notes
+genie --ask "What's our vacation policy and who owns project X?" --dir ~/notes
 
 # Graph correlation is automatic: analyzing files also builds a LadybugDB
 # entity graph. A bare --ask then answers from everything indexed in the last 24h.
-gemma --ask "summarize the Q2 risks" --doc q2.pdf   # indexes + answers
-gemma --ask "who owns the Apollo project?"          # uses indexed data, no file
-gemma --graph-stats                                 # graph stats + top hubs
-gemma --graph-query "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name,e.name LIMIT 10"
+genie --ask "summarize the Q2 risks" --doc q2.pdf   # indexes + answers
+genie --ask "who owns the Apollo project?"          # uses indexed data, no file
+genie --graph-stats                                 # graph stats + top hubs
+genie --graph-query "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name,e.name LIMIT 10"
 
 # Vision / audio
-gemma --image photo.jpg
-gemma --audio clip.wav
+genie --image photo.jpg
+genie --audio clip.wav
 
 # Pipe input from stdin
-cat notes.txt | gemma --ask "summarize this"
+cat notes.txt | genie --ask "summarize this"
 
 # Tune retrieval for large inputs
-gemma --ask "key risks?" --doc big.pdf --top-k 10 --chunk-size 1500
+genie --ask "key risks?" --doc big.pdf --top-k 10 --chunk-size 1500
 ```
 
-Run `gemma --help` for all options plus a live dependency check.
+Run `genie --help` for all options plus a live dependency check.
 See **[FAQ.md](FAQ.md)** for a business-friendly overview, working examples, and
 common questions (privacy, offline use, file formats, requirements, cache reset).
 
 ### Utility commands
 
 ```bash
-gemma --version            # print version
-gemma doctor               # dependency check
-gemma cache info           # show vector-cache path, size, table count
-gemma cache list           # list indexed tables
-gemma cache clear          # wipe the vector cache
-gemma --graph-stats        # correlation-graph counts + top entity hubs
-gemma --graph-query "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name,e.name LIMIT 10"
+genie --version            # print version
+genie doctor               # dependency check
+genie cache info           # show vector-cache path, size, table count
+genie cache list           # list indexed tables
+genie cache clear          # wipe the vector cache
+genie --graph-stats        # correlation-graph counts + top entity hubs
+genie --graph-query "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name,e.name LIMIT 10"
 ```
 
 ## How it works
@@ -105,8 +110,8 @@ gemma --graph-query "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name,e.name
 - **Graph correlation (LadybugDB)**: the graph is updated automatically by the
   steps above (no separate build command) and stored as a local `.lbug` file at
   `~/.gemma/gemma-graph.lbug`, auto-cleared after 24h idle. Inspect it with
-  `gemma --graph-stats` (counts + top hubs) or `gemma --graph-query "<cypher>"`.
-- **Auto-consult**: a bare `gemma --ask` (no file given) automatically answers
+  `genie --graph-stats` (counts + top hubs) or `genie --graph-query "<cypher>"`.
+- **Auto-consult**: a bare `genie --ask` (no file given) automatically answers
   from whatever you indexed in the last 24h — relevant LanceDB chunks plus
   LadybugDB entity correlations for the entities in your question.
 
@@ -114,7 +119,7 @@ gemma --graph-query "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name,e.name
 
 | Path | What |
 |------|------|
-| `/opt/projects/unovie/gemmacli/` | the scripts (`gemma`, `gemma_rag.py`, `install.sh`) |
+| `/opt/projects/unovie/gemmacli/` | the scripts (`genie`, `gemma_rag.py`, `install.sh`) |
 | `~/.gemma/gemma-cache.db/` | LanceDB vector cache (safe to delete; rebuilds on demand) |
 | `~/.cache/huggingface/hub/` | all model weights (Gemma + embedder) |
 

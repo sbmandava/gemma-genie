@@ -1,8 +1,8 @@
-# gemma CLI — FAQ
+# Gemma Genie — FAQ
 
 ## Private AI on your own laptop — powered by Google Gemma
 
-`gemma` puts a genuinely capable AI assistant **on your machine**, with **no
+`genie` puts a genuinely capable AI assistant **on your machine**, with **no
 cloud, no accounts, and no internet required** once installed. It's built on
 two pieces of Google innovation:
 
@@ -32,17 +32,17 @@ sends them anywhere.
 ## Why the answers are better: built-in Vector search + Knowledge Graph
 
 A language model on its own can only "see" what fits in a single prompt and
-tends to guess when documents are large or span many files. `gemma` avoids that
+tends to guess when documents are large or span many files. `genie` avoids that
 by combining **two complementary memories**, both running locally:
 
 - **Vector search (LanceDB).** Every document is split into chunks and embedded,
-  so when you ask a question `gemma` retrieves the *semantically most relevant*
+  so when you ask a question `genie` retrieves the *semantically most relevant*
   passages — even across hundreds of pages and many files — and shows only those
   to the model. This keeps answers grounded in your actual text and within the
   model's context window. Huge thanks to the **[LanceDB](https://lancedb.github.io/lancedb/)**
   team for a fast, embeddable vector database.
 
-- **Knowledge graph (LadybugDB).** As files are indexed, `gemma` also extracts
+- **Knowledge graph (LadybugDB).** As files are indexed, `genie` also extracts
   the people, projects, organizations, and products and stores how they relate
   in a `(:File)-[:Mentions]->(:Entity)` graph. This lets it answer *relationship*
   questions — who owns what, which vendor built which system, what connects two
@@ -53,7 +53,7 @@ by combining **two complementary memories**, both running locally:
 **Together** they make responses noticeably more accurate: the vector store
 finds the right evidence, and the graph disambiguates how things are connected
 (e.g. distinguishing the *builder* of a system from the *customer* it's for).
-Every `gemma --ask` automatically consults both — no extra steps.
+Every `genie --ask` automatically consults both — no extra steps.
 
 ---
 
@@ -61,29 +61,29 @@ Every `gemma --ask` automatically consults both — no extra steps.
 
 ```bash
 # Ask a quick question (no documents needed)
-gemma --ask "Explain the difference between OPEX and CAPEX in one paragraph"
+genie --ask "Explain the difference between OPEX and CAPEX in one paragraph"
 
 # Summarize a contract / report (PDF, Word, Excel, PowerPoint)
-gemma --ask "Summarize the key obligations and renewal terms" --doc MSA_2026.pdf
-gemma --ask "What are the top 3 risks called out here?" --doc board_deck.pptx
-gemma --ask "Which line items exceed budget, and by how much?" --doc budget.xlsx
+genie --ask "Summarize the key obligations and renewal terms" --doc MSA_2026.pdf
+genie --ask "What are the top 3 risks called out here?" --doc board_deck.pptx
+genie --ask "Which line items exceed budget, and by how much?" --doc budget.xlsx
 
 # Turn a whole folder into a searchable, private knowledge base
-gemma --ask "What's our PTO policy and who approves it?" --dir ~/CompanyDocs
+genie --ask "What's our PTO policy and who approves it?" --dir ~/CompanyDocs
 
 # After indexing, just ask — it remembers what you've shown it (last 24h)
-gemma --ask "Who owns the Apollo project and which vendor built it?"
+genie --ask "Who owns the Apollo project and which vendor built it?"
 
 # See how concepts/people/projects connect across all your documents
-gemma --graph-stats
-gemma --graph-query "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name, e.name LIMIT 20"
+genie --graph-stats
+genie --graph-query "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name, e.name LIMIT 20"
 
 # Pipe text in from anything
-pbpaste | gemma --ask "Rewrite this as a polite customer email"
-cat meeting_notes.txt | gemma --ask "Extract action items with owners"
+pbpaste | genie --ask "Rewrite this as a polite customer email"
+cat meeting_notes.txt | genie --ask "Extract action items with owners"
 
 # Check what's running on your machine
-gemma doctor
+genie doctor
 ```
 
 Every one of these runs entirely offline after install. Your files stay yours.
@@ -92,7 +92,7 @@ Every one of these runs entirely offline after install. Your files stay yours.
 
 ### How does this program work?
 
-`gemma` runs Google's **Gemma 4** models **on your own machine** via
+`genie` runs Google's **Gemma 4** models **on your own machine** via
 [`litert-lm`](https://github.com/google-ai-edge/litert-lm). When you analyze a
 file or folder it:
 
@@ -103,7 +103,7 @@ file or folder it:
 3. **Answers** your question by retrieving the most relevant chunks + graph
    relationships and feeding only those to the local Gemma model.
 
-A bare `gemma --ask "..."` (no file) automatically answers from whatever you've
+A bare `genie --ask "..."` (no file) automatically answers from whatever you've
 indexed in the last 24h. Everything runs locally.
 
 ---
@@ -127,7 +127,7 @@ The **only** network usage is:
 ### Will it work without a network — e.g. on an airplane?
 
 **Yes.** Once the one-time install has completed and the models are cached,
-`gemma` works fully offline — no Wi-Fi required. The 24h update check simply
+`genie` works fully offline — no Wi-Fi required. The 24h update check simply
 fails silently when there's no connection and doesn't affect answering.
 
 If you want zero network attempts at all, set `GEMMA_NO_UPDATE=1`.
@@ -157,9 +157,9 @@ Notes:
 
 Usage:
 ```bash
-gemma --ask "summarize the risks" --doc report.pdf
-gemma --ask "who owns each project?" --doc plan.xlsx
-gemma --ask "what changed?" --dir ~/project-docs
+genie --ask "summarize the risks" --doc report.pdf
+genie --ask "who owns each project?" --doc plan.xlsx
+genie --ask "what changed?" --dir ~/project-docs
 ```
 
 ---
@@ -176,7 +176,7 @@ gemma --ask "what changed?" --dir ~/project-docs
 - The default model is chosen automatically from RAM: **< 6 GB → e2b**,
   **≥ 6 GB → e4b**. Override anytime with `--model e2b|e4b` or `GEMMA_MODEL`.
 - GPU is auto-detected with automatic CPU fallback. Check what you're on with
-  `gemma doctor`.
+  `genie doctor`.
 
 ---
 
@@ -186,9 +186,9 @@ The caches are safe to delete — they rebuild on demand.
 
 ```bash
 # Clear just the vector cache (indexed document chunks)
-gemma cache clear
+genie cache clear
 
-# Or wipe everything gemma stores (vector cache, graph, backend/model choice,
+# Or wipe everything genie stores (vector cache, graph, backend/model choice,
 # update timestamp) and start completely fresh:
 rm -rf ~/.gemma
 
@@ -222,10 +222,10 @@ stale data clears itself over time.
 ### How do I control which model / backend is used?
 
 ```bash
-gemma --model e2b --ask "..."     # force the small, fast model
-GEMMA_MODEL=e4b gemma --ask "..." # force the stronger model
-GEMMA_BACKEND=cpu gemma --ask ... # force CPU
-gemma doctor                      # show detected backend + default model + RAM
+genie --model e2b --ask "..."     # force the small, fast model
+GEMMA_MODEL=e4b genie --ask "..." # force the stronger model
+GEMMA_BACKEND=cpu genie --ask ... # force CPU
+genie doctor                      # show detected backend + default model + RAM
 ```
 
 ---

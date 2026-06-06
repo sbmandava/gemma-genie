@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# gemma CLI installer — bootstraps everything on a fresh machine.
+# Gemma Genie installer — bootstraps everything on a fresh machine.
 #
 #   curl -fsSL https://raw.githubusercontent.com/sbmandava/gemmacli/main/install.sh | bash
 #
@@ -38,7 +38,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # Where am I running from? (a local checkout vs. piped through curl)
 SELF="${BASH_SOURCE[0]:-}"
 SRC_DIR=""
-if [ -n "$SELF" ] && [ -f "$SELF" ] && [ -f "$(dirname "$SELF")/gemma" ]; then
+if [ -n "$SELF" ] && [ -f "$SELF" ] && [ -f "$(dirname "$SELF")/genie" ]; then
     SRC_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 fi
 
@@ -87,10 +87,10 @@ fetch() {  # fetch <filename>
         curl -fsSL "$RAW_BASE/$1" -o "$INSTALL_DIR/$1"
     fi
 }
-fetch gemma
+fetch genie
 fetch gemma_rag.py
 fetch gemma_graph.py
-chmod +x "$INSTALL_DIR/gemma"
+chmod +x "$INSTALL_DIR/genie"
 
 mkdir -p "$CACHE_DIR"   # vector cache lives here (recreated if deleted)
 
@@ -111,16 +111,16 @@ fi
 # ---------------------------------------------------------------------------
 BIN_DIR="${GEMMA_BIN_DIR:-/usr/local/bin}"
 if { mkdir -p "$BIN_DIR" 2>/dev/null || [ -d "$BIN_DIR" ]; } && \
-   ln -sf "$INSTALL_DIR/gemma" "$BIN_DIR/gemma" 2>/dev/null; then
-    say "Linked $BIN_DIR/gemma"
+   ln -sf "$INSTALL_DIR/genie" "$BIN_DIR/genie" 2>/dev/null; then
+    say "Linked $BIN_DIR/genie"
 elif have sudo && sudo mkdir -p "$BIN_DIR" 2>/dev/null && \
-     sudo ln -sf "$INSTALL_DIR/gemma" "$BIN_DIR/gemma" 2>/dev/null; then
-    say "Linked $BIN_DIR/gemma (sudo)"
+     sudo ln -sf "$INSTALL_DIR/genie" "$BIN_DIR/genie" 2>/dev/null; then
+    say "Linked $BIN_DIR/genie (sudo)"
 else
     BIN_DIR="$HOME/.local/bin"
     mkdir -p "$BIN_DIR"
-    ln -sf "$INSTALL_DIR/gemma" "$BIN_DIR/gemma"
-    say "Linked $BIN_DIR/gemma"
+    ln -sf "$INSTALL_DIR/genie" "$BIN_DIR/genie"
+    say "Linked $BIN_DIR/genie"
     case ":$PATH:" in
         *":$BIN_DIR:"*) ;;
         *) warn "Add $BIN_DIR to your PATH:  export PATH=\"$BIN_DIR:\$PATH\"" ;;
@@ -192,15 +192,15 @@ fi
 # 6. Verify
 # ---------------------------------------------------------------------------
 say "Install complete. Verifying..."
-if "$INSTALL_DIR/gemma" --help >/dev/null 2>&1; then
+if "$INSTALL_DIR/genie" --help >/dev/null 2>&1; then
     echo
-    echo "  gemma is installed.  Try:"
-    echo "    gemma --ask \"hello\""
-    echo "    gemma --ask \"summarize this\" --doc report.pdf"
-    echo "    gemma --ask \"who owns project X?\" --dir ~/notes"
+    echo "  Gemma Genie is installed.  Try:"
+    echo "    genie --ask \"hello\""
+    echo "    genie --ask \"summarize this\" --doc report.pdf"
+    echo "    genie --ask \"who owns project X?\" --dir ~/notes"
     echo
-    echo "  Run 'gemma --help' to see all options and a dependency check."
+    echo "  Run 'genie --help' to see all options and a dependency check."
 else
-    warn "gemma --help did not run cleanly; check the output above."
+    warn "genie --help did not run cleanly; check the output above."
     exit 1
 fi

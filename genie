@@ -39,7 +39,7 @@ CHUNK_SIZE="${GENIE_CHUNK_SIZE:-}"    # chars per chunk (empty = helper default)
 # Pin the litert-lm runtime so uvx resolves a known-good version instead of
 # silently pulling a newer (possibly breaking) release on a cache miss.
 LITERT_VERSION="0.13.1"
-VERSION="0.2.3"
+VERSION="0.2.4"
 
 # All models (Gemma weights + the model2vec embedder) live in the HuggingFace
 # hub cache: ${HF_HOME:-$HOME/.cache/huggingface}/hub
@@ -400,17 +400,65 @@ print_sources() {
 # printed to stdout at init, before any answer tokens — so we filter both streams.
 LITERT_NOISE_RE='maxDynamicUniformBuffersPerPipelineLayout|maxDynamicStorageBuffersPerPipelineLayout|Loaded OpenCL library with dlopen'
 
-# Run the on-device model. Three jobs beyond just invoking it:
-#   1. Drop the GPU backend noise from stderr.
-#   2. Drop the init noise from stdout. grep --line-buffered keeps the answer
-#      streaming as it is generated (line by line) rather than batching it.
-#   3. Tolerate a non-zero exit from the runtime *after* it has already produced an
-#      answer — the litert-lm GPU backend can return non-zero during teardown, and
-#      we don't want `set -e` to turn a delivered answer into a failed command.
-run_llm() {
+# litert-lm prints this to stdout when a generation fails (it can still exit 0),
+# so it's a more reliable failure signal than the exit code alone.
+LITERT_ERROR_RE='^[[:space:]]*An error occurred'
+
+# One model invocation. Filters the GPU noise from both streams and streams the
+# answer live (grep --line-buffered; tee stays line-buffered to a TTY, so live
+# streaming is preserved). The answer is ALSO copied to the capture file named by
+# $1 so the caller can tell whether a real answer was produced — the function's
+# stdout remains the live answer (do not call this in $() or streaming is lost).
+# `set +e` keeps a non-zero / teardown exit from aborting under `set -e`.
+_run_llm_once() {
+    local cap="$1"; shift
+    set +e
     "${LITERT_RUN[@]}" "$@" \
         2> >(grep -vE "$LITERT_NOISE_RE" >&2) \
-        | grep --line-buffered -vE "$LITERT_NOISE_RE" || true
+        | grep --line-buffered -vE "$LITERT_NOISE_RE" \
+        | tee "$cap"
+    set -e
+}
+
+# Emit the argument list with the GPU backend swapped for CPU, NUL-delimited
+# (handles both "--backend=gpu" and the two-token "--vision-backend gpu" form).
+_args_gpu_to_cpu() {
+    local a
+    for a in "$@"; do
+        case "$a" in
+            --backend=gpu)        printf '%s\0' "--backend=cpu" ;;
+            --vision-backend=gpu) printf '%s\0' "--vision-backend=cpu" ;;
+            gpu)                  printf '%s\0' "cpu" ;;
+            *)                    printf '%s\0' "$a" ;;
+        esac
+    done
+}
+
+# Run the on-device model with automatic CPU fallback: if a GPU run produces no
+# real answer (no output, or litert's "An error occurred"), retry once on CPU so
+# the user still gets an answer. A successful GPU run is never re-run, so there's
+# no double output. The fallback is remembered for the rest of this process (and
+# cached for future runs, unless the backend was explicitly forced) so we don't
+# keep hammering a broken GPU; `genie doctor` re-verifies and can restore GPU.
+run_llm() {
+    local cap body
+    cap="$(mktemp)"
+    _run_llm_once "$cap" "$@"
+    # A real answer is captured output that isn't just litert's error marker.
+    body="$(grep -vE "$LITERT_ERROR_RE" "$cap" 2>/dev/null | tr -d '[:space:]' || true)"
+    rm -f "$cap"
+
+    if [[ -z "$body" && "$BACKEND" == "gpu" ]]; then
+        echo "genie: GPU backend produced no answer — retrying on CPU..." >&2
+        local -a cpu_args=()
+        while IFS= read -r -d '' a; do cpu_args+=("$a"); done < <(_args_gpu_to_cpu "$@")
+        BACKEND=cpu
+        [[ -z "${GENIE_BACKEND:-}" ]] && { printf '%s' cpu > "$BACKEND_CACHE" 2>/dev/null || true; }
+        cap="$(mktemp)"
+        _run_llm_once "$cap" "${cpu_args[@]}"
+        rm -f "$cap"
+    fi
+    return 0
 }
 
 # Actually run a tiny generation on the GPU with litert-lm. Returns 0 only if the

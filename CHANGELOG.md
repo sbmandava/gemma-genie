@@ -5,6 +5,16 @@ All notable changes to Gemma Genie are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4]
+
+### Added
+- Runtime auto-fallback to CPU: if a GPU run produces no answer (no output, or
+  litert's "An error occurred"), genie retries the same prompt on CPU so the
+  user still gets a result. A successful GPU run is never re-run, so there's no
+  double output, and live streaming on the GPU path is preserved. The fallback
+  is remembered for the process and cached for future runs (unless the backend
+  is forced via `GENIE_BACKEND`); `genie doctor` re-verifies and can restore GPU.
+
 ## [0.2.3]
 
 ### Fixed

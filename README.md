@@ -70,6 +70,8 @@ gemma --ask "key risks?" --doc big.pdf --top-k 10 --chunk-size 1500
 ```
 
 Run `gemma --help` for all options plus a live dependency check.
+See **[FAQ.md](FAQ.md)** for a business-friendly overview, working examples, and
+common questions (privacy, offline use, file formats, requirements, cache reset).
 
 ### Utility commands
 

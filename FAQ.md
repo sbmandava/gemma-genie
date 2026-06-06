@@ -1,0 +1,236 @@
+# gemma CLI — FAQ
+
+## Private AI on your own laptop — powered by Google Gemma
+
+`gemma` puts a genuinely capable AI assistant **on your machine**, with **no
+cloud, no accounts, and no internet required** once installed. It's built on
+two pieces of Google innovation:
+
+- **Gemma 4** — Google's open, efficient models, quantization-aware-trained to
+  run fast on everyday laptops
+  ([blog](https://blog.google/innovation-and-ai/technology/developers-tools/quantization-aware-training-gemma-4/)).
+- **LiteRT-LM** — Google's on-device runtime that runs those models locally,
+  using your GPU when available
+  ([overview](https://developers.google.com/edge/litert-lm/overview)).
+
+**Why business users care:**
+
+- **Confidential by design.** Contracts, financials, HR files, board decks —
+  ask questions about them without a single byte leaving your laptop.
+- **Works on a plane, in a vault, or behind an air-gap.** After the one-time
+  setup, there's no network dependency.
+- **No per-question cost, no rate limits, no vendor lock-in.** Run it as much as
+  you like.
+- **It reads your real files.** PDFs, Word, Excel, PowerPoint, folders of
+  documents — and answers in plain language, citing the source file.
+
+Think of it as a private analyst that has read all your documents and never
+sends them anywhere.
+
+---
+
+## Why the answers are better: built-in Vector search + Knowledge Graph
+
+A language model on its own can only "see" what fits in a single prompt and
+tends to guess when documents are large or span many files. `gemma` avoids that
+by combining **two complementary memories**, both running locally:
+
+- **Vector search (LanceDB).** Every document is split into chunks and embedded,
+  so when you ask a question `gemma` retrieves the *semantically most relevant*
+  passages — even across hundreds of pages and many files — and shows only those
+  to the model. This keeps answers grounded in your actual text and within the
+  model's context window. Huge thanks to the **[LanceDB](https://lancedb.github.io/lancedb/)**
+  team for a fast, embeddable vector database.
+
+- **Knowledge graph (LadybugDB).** As files are indexed, `gemma` also extracts
+  the people, projects, organizations, and products and stores how they relate
+  in a `(:File)-[:Mentions]->(:Entity)` graph. This lets it answer *relationship*
+  questions — who owns what, which vendor built which system, what connects two
+  documents — that pure text search misses. Hat tip to the
+  **[LadybugDB](https://github.com/LadybugDB/ladybug)** team for an embeddable
+  Cypher graph database.
+
+**Together** they make responses noticeably more accurate: the vector store
+finds the right evidence, and the graph disambiguates how things are connected
+(e.g. distinguishing the *builder* of a system from the *customer* it's for).
+Every `gemma --ask` automatically consults both — no extra steps.
+
+---
+
+## Working examples
+
+```bash
+# Ask a quick question (no documents needed)
+gemma --ask "Explain the difference between OPEX and CAPEX in one paragraph"
+
+# Summarize a contract / report (PDF, Word, Excel, PowerPoint)
+gemma --ask "Summarize the key obligations and renewal terms" --doc MSA_2026.pdf
+gemma --ask "What are the top 3 risks called out here?" --doc board_deck.pptx
+gemma --ask "Which line items exceed budget, and by how much?" --doc budget.xlsx
+
+# Turn a whole folder into a searchable, private knowledge base
+gemma --ask "What's our PTO policy and who approves it?" --dir ~/CompanyDocs
+
+# After indexing, just ask — it remembers what you've shown it (last 24h)
+gemma --ask "Who owns the Apollo project and which vendor built it?"
+
+# See how concepts/people/projects connect across all your documents
+gemma --graph-stats
+gemma --graph-query "MATCH (f:File)-[:Mentions]->(e:Entity) RETURN f.name, e.name LIMIT 20"
+
+# Pipe text in from anything
+pbpaste | gemma --ask "Rewrite this as a polite customer email"
+cat meeting_notes.txt | gemma --ask "Extract action items with owners"
+
+# Check what's running on your machine
+gemma doctor
+```
+
+Every one of these runs entirely offline after install. Your files stay yours.
+
+---
+
+### How does this program work?
+
+`gemma` runs Google's **Gemma 4** models **on your own machine** via
+[`litert-lm`](https://github.com/google-ai-edge/litert-lm). When you analyze a
+file or folder it:
+
+1. **Extracts text** — plain text/CSV directly; PDF/DOCX/XLSX/PPTX/images via
+   [liteparse](https://pypi.org/project/liteparse/).
+2. **Indexes it** into a local **LanceDB** vector store (chunks + embeddings via
+   `model2vec`) and a **LadybugDB** entity-correlation graph.
+3. **Answers** your question by retrieving the most relevant chunks + graph
+   relationships and feeding only those to the local Gemma model.
+
+A bare `gemma --ask "..."` (no file) automatically answers from whatever you've
+indexed in the last 24h. Everything runs locally.
+
+---
+
+### Does my data leave my laptop?
+
+**No.** Your documents, questions, embeddings, and the graph never leave the
+machine. There is no cloud API, no account, and no telemetry. All processing
+(extraction, embedding, retrieval, and the model itself) happens on-device, and
+all data stays under `~/.gemma/` and the local HuggingFace cache.
+
+The **only** network usage is:
+- the **one-time install** (downloading `uv`, Python packages, and the Gemma
+  model weights), and
+- a **once-per-24h version check** against the public GitHub repo (just to
+  auto-upgrade the scripts — your data is never sent). Disable it with
+  `GEMMA_NO_UPDATE=1`.
+
+---
+
+### Will it work without a network — e.g. on an airplane?
+
+**Yes.** Once the one-time install has completed and the models are cached,
+`gemma` works fully offline — no Wi-Fi required. The 24h update check simply
+fails silently when there's no connection and doesn't affect answering.
+
+If you want zero network attempts at all, set `GEMMA_NO_UPDATE=1`.
+
+---
+
+### Will it work with PDF, Word, Excel — any file?
+
+Supported out of the box:
+
+| Type | Extensions | How |
+|------|-----------|-----|
+| Text / data | `.txt .csv .tsv .md .log .json .yaml .yml .rst` | read directly |
+| PDF | `.pdf` | liteparse (text layer) |
+| Word | `.docx .doc` | liteparse + LibreOffice |
+| Excel | `.xlsx .xls` | liteparse + LibreOffice |
+| PowerPoint | `.pptx .ppt` | liteparse + LibreOffice |
+| Images | `.png .jpg .jpeg .tiff .bmp .gif .webp` | liteparse / vision |
+
+Notes:
+- **Office formats (Word/Excel/PowerPoint)** need **LibreOffice** installed (the
+  installer handles this on macOS). PDF, images, and text files do not.
+- **Scanned/image-only PDFs** have no text layer — they need OCR (use `--llm`
+  or an image flow); a plain text extract will be empty.
+- Not every binary format is supported. If a file type isn't in the table above,
+  it's skipped during `--dir` ingestion.
+
+Usage:
+```bash
+gemma --ask "summarize the risks" --doc report.pdf
+gemma --ask "who owns each project?" --doc plan.xlsx
+gemma --ask "what changed?" --dir ~/project-docs
+```
+
+---
+
+### What are my laptop requirements?
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| OS | macOS, Linux (Windows via WSL2, untested) | macOS / Linux |
+| RAM | ~4 GB (uses the smaller **e2b** model) | 8 GB+ (uses **e4b**) |
+| Disk | ~6–8 GB free (model weights + caches) | 10 GB+ |
+| GPU | none (CPU works) | Apple Silicon / supported GPU |
+
+- The default model is chosen automatically from RAM: **< 6 GB → e2b**,
+  **≥ 6 GB → e4b**. Override anytime with `--model e2b|e4b` or `GEMMA_MODEL`.
+- GPU is auto-detected with automatic CPU fallback. Check what you're on with
+  `gemma doctor`.
+
+---
+
+### How do I flush the cache and start over?
+
+The caches are safe to delete — they rebuild on demand.
+
+```bash
+# Clear just the vector cache (indexed document chunks)
+gemma cache clear
+
+# Or wipe everything gemma stores (vector cache, graph, backend/model choice,
+# update timestamp) and start completely fresh:
+rm -rf ~/.gemma
+
+# Re-running any command (or the installer) recreates what's needed.
+```
+
+To also remove the downloaded **model weights** (frees several GB):
+```bash
+rm -rf ~/.cache/huggingface/hub/models--litert-community--gemma-4-*
+rm -rf ~/.cache/huggingface/hub/models--minishlab--potion-base-8M
+```
+They re-download on next use (needs network once).
+
+Both the vector cache and the graph also **auto-expire after 24h idle**, so
+stale data clears itself over time.
+
+---
+
+### Where is everything stored?
+
+| Path | What |
+|------|------|
+| `~/.gemma/gemma-cache.db/` | LanceDB vector cache |
+| `~/.gemma/gemma-graph.lbug` | LadybugDB correlation graph |
+| `~/.gemma/backend`, `~/.gemma/model_default` | detected GPU/CPU + default model |
+| `~/.cache/huggingface/hub/` | model weights (Gemma + embedder) |
+| `/opt/projects/unovie/gemmacli/` (or your install dir) | the scripts |
+
+---
+
+### How do I control which model / backend is used?
+
+```bash
+gemma --model e2b --ask "..."     # force the small, fast model
+GEMMA_MODEL=e4b gemma --ask "..." # force the stronger model
+GEMMA_BACKEND=cpu gemma --ask ... # force CPU
+gemma doctor                      # show detected backend + default model + RAM
+```
+
+---
+
+### Is it really free / private?
+
+Yes. Open-source models, run locally, no API keys, no per-query cost, and your
+content stays on your machine. See [README](README.md) for details.

@@ -46,7 +46,7 @@ fi
 # 1. uv / uvx  (runs the model, liteparse, and the RAG helper)
 # ---------------------------------------------------------------------------
 if ! have uvx; then
-    say "Installing uv (provides uvx)…"
+    say "Installing uv (provides uvx)..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 fi
@@ -58,7 +58,7 @@ say "uv: $(uv --version 2>/dev/null || echo present)"
 # ---------------------------------------------------------------------------
 if [ "$(uname)" = "Darwin" ] && ! have soffice; then
     if ! have brew; then
-        say "Installing Homebrew…"
+        say "Installing Homebrew..."
         NONINTERACTIVE=1 /bin/bash -c \
           "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || \
           warn "Homebrew install failed"
@@ -66,7 +66,7 @@ if [ "$(uname)" = "Darwin" ] && ! have soffice; then
         [ -x /usr/local/bin/brew ]    && eval "$(/usr/local/bin/brew shellenv)"
     fi
     if have brew; then
-        say "Installing LibreOffice (for DOCX/XLSX/PPTX parsing)…"
+        say "Installing LibreOffice (for DOCX/XLSX/PPTX parsing)..."
         brew install --cask libreoffice || warn "LibreOffice install failed (PDF/images still work)"
     fi
 fi
@@ -89,6 +89,7 @@ fetch() {  # fetch <filename>
 }
 fetch gemma
 fetch gemma_rag.py
+fetch gemma_graph.py
 chmod +x "$INSTALL_DIR/gemma"
 
 mkdir -p "$CACHE_DIR"   # vector cache lives here (recreated if deleted)
@@ -142,13 +143,13 @@ hf_cached() {  # repo [file]
 }
 
 if [ "${GEMMA_SKIP_PREWARM:-0}" != "1" ]; then
-    say "Pre-fetching liteparse…"
+    say "Pre-fetching liteparse..."
     uvx --from liteparse lit --help >/dev/null 2>&1 || warn "liteparse prefetch failed"
 
     if hf_cached "minishlab/potion-base-8M"; then
         say "Embedder (model2vec) already cached — skipping."
     else
-        say "Pre-fetching lancedb + model2vec embedder…"
+        say "Pre-fetching lancedb + model2vec embedder..."
         uvx --python 3.12 --with lancedb --with model2vec python - <<'PY' >/dev/null 2>&1 || warn "embedder prefetch failed"
 from model2vec import StaticModel
 StaticModel.from_pretrained("minishlab/potion-base-8M")
@@ -156,7 +157,7 @@ import lancedb  # noqa: F401
 PY
     fi
 
-    say "Pre-fetching ladybug (graph correlation)…"
+    say "Pre-fetching ladybug (graph correlation)..."
     uvx --python 3.12 --with ladybug python -c "import ladybug" >/dev/null 2>&1 \
         || warn "ladybug prefetch failed"
 
@@ -167,7 +168,7 @@ PY
                 say "Model $repo already downloaded — skipping."
                 continue
             fi
-            say "Downloading $repo (large — several GB) into HF hub…"
+            say "Downloading $repo (large — several GB) into HF hub..."
             uvx litert-lm run --from-huggingface-repo "$repo" "$file" --backend=gpu --prompt "hi" >/dev/null 2>&1 \
               || uvx litert-lm run --from-huggingface-repo "$repo" "$file" --backend=cpu --prompt "hi" >/dev/null 2>&1 \
               || warn "Could not pre-download $repo (it will download on first use)."
@@ -190,7 +191,7 @@ fi
 # ---------------------------------------------------------------------------
 # 6. Verify
 # ---------------------------------------------------------------------------
-say "Install complete. Verifying…"
+say "Install complete. Verifying..."
 if "$INSTALL_DIR/gemma" --help >/dev/null 2>&1; then
     echo
     echo "  gemma is installed.  Try:"

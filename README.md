@@ -76,6 +76,23 @@ Prebuilt Rust CLIs are published for **x86_64 Linux** and **Apple-Silicon
 macOS**; other targets fall back to `--python` (or build from
 [`rust/`](rust/)). Re-run any time to repair an install or after deleting `~/.genie`.
 
+### Install via Cargo (crates.io)
+
+If you have a Rust toolchain, the installer is published on **[crates.io](https://crates.io/crates/genie-bootstrap)**.
+It probes your OS/arch/GPU/RAM and fetches **only** the components your machine
+needs (the right prebuilt `genie` binary, the model variant by RAM, and the
+embedder):
+
+```bash
+cargo install genie-bootstrap
+genie-bootstrap --install      # probe + fetch + place genie on your PATH
+```
+
+This installs the same prebuilt `genie` CLI as the `curl` script — no full
+source build required. (The `genie` CLI itself is not on crates.io: it depends
+on local/path crates that crates.io doesn't allow; build it from
+[`rust/`](rust/) if you want to compile it yourself.)
+
 > **Runs offline.** Network is only needed for the one-time install (downloading
 > `uv`, the Python deps, and the Gemma model weights). Once those are cached,
 > `genie` runs entirely on-device from the command line — no cloud, no API keys,

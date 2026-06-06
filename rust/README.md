@@ -50,6 +50,17 @@ the integration tests is `/opt/projects/unovie/dataingest/sample`.
 and fetches only the components a target needs. See
 [`../specs/rust-installer.md`](../specs/rust-installer.md) (local).
 
+The bootstrapper is published on crates.io, so with a Rust toolchain you can:
+
+```bash
+cargo install genie-bootstrap     # https://crates.io/crates/genie-bootstrap
+genie-bootstrap --install
+```
+
+(Only `genie-bootstrap` is on crates.io — it has no native/path deps. The `genie`
+CLI is built from this workspace as above; its local/path deps can't be published
+to crates.io.)
+
 ## Layout
 
 ```

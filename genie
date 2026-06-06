@@ -68,6 +68,7 @@ Subcommands / inspection:
   cache [info|list|clear]   Inspect or clear the LanceDB vector cache
   --graph-stats             Show correlation-graph stats + top hubs
   --graph-query "<cypher>"  Run a raw Cypher query against the graph
+  --uninstall [-y]          Remove models, caches, symlinks, and scripts
 
 Analyzing files with --txt/--doc/--dir also auto-updates a LadybugDB
 correlation graph (entities per file; --dir uses Gemma for extraction). A bare
@@ -176,6 +177,41 @@ detect_total_gb() {  # total system RAM in whole GB
         bytes=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0) * 1024 ))
     fi
     echo $(( bytes / 1024 / 1024 / 1024 ))
+}
+
+cmd_uninstall() {
+    local yes=0
+    [[ "${1:-}" == "-y" || "${1:-}" == "--yes" ]] && yes=1
+    echo "Gemma Genie uninstall will remove:"
+    echo "  - data & settings:   $HOME/.gemma"
+    echo "  - model weights:     $HF_HOME/hub (Gemma + embedder)"
+    echo "  - command symlinks:  /usr/local/bin/genie, $HOME/.local/bin/genie"
+    echo "  - installed scripts: $SCRIPT_DIR (skipped if it's a git checkout)"
+    echo "  (uv and LibreOffice are left installed.)"
+    if [[ $yes -ne 1 ]]; then
+        printf "Proceed? [y/N] "
+        read -r ans || ans=""
+        [[ "$ans" =~ ^[Yy] ]] || { echo "Aborted."; return 1; }
+    fi
+    rm -rf "$HOME/.gemma" && echo "Removed $HOME/.gemma"
+    rm -rf "$HF_HOME"/hub/models--litert-community--gemma-4-* 2>/dev/null && echo "Removed Gemma model weights"
+    rm -rf "$HF_HOME"/hub/models--minishlab--potion-base-8M 2>/dev/null && echo "Removed embedder weights"
+    local b
+    for b in /usr/local/bin/genie "$HOME/.local/bin/genie"; do
+        if [[ -L "$b" || -e "$b" ]]; then
+            rm -f "$b" 2>/dev/null || sudo rm -f "$b" 2>/dev/null
+            echo "Removed $b"
+        fi
+    done
+    if [[ -d "$SCRIPT_DIR/.git" ]]; then
+        echo "Note: $SCRIPT_DIR is a git checkout — left intact (remove manually if desired)."
+    else
+        rm -f "$SCRIPT_DIR"/genie "$SCRIPT_DIR"/gemma_rag.py "$SCRIPT_DIR"/gemma_graph.py \
+              "$SCRIPT_DIR"/install.sh "$SCRIPT_DIR"/genie.png 2>/dev/null
+        rmdir "$SCRIPT_DIR" 2>/dev/null
+        echo "Removed installed scripts in $SCRIPT_DIR"
+    fi
+    echo "Gemma Genie uninstalled."
 }
 
 # Default model: GEMMA_MODEL env > cached choice (set at install from RAM) >
@@ -298,6 +334,7 @@ case "${1:-}" in
     -V|--version|version) echo "Gemma Genie $VERSION"; exit 0 ;;
     doctor)               echo "Gemma Genie $VERSION"; check_deps; exit 0 ;;
     cache)                shift; cmd_cache "$@"; exit $? ;;
+    --uninstall|uninstall) shift; cmd_uninstall "$@"; exit $? ;;
     --graph-stats)        mkdir -p "$(dirname "$GRAPH_DB")"; run_graph --mode stats; exit $? ;;
     --graph-query)
         [[ -n "${2:-}" ]] || { echo "Usage: $(basename "$0") --graph-query \"<cypher>\"" >&2; exit 1; }

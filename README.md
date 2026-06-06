@@ -10,6 +10,23 @@
 [`litert-lm`](https://github.com/google-ai-edge/litert-lm). Ask questions,
 analyze documents, and query whole folders — all locally, no cloud.
 
+## Project goals
+
+- **Privacy first** — your documents never leave the device; no cloud, no API keys.
+- **Truly offline** — network is needed only for the one-time install.
+- **Useful on real files** — ask across PDFs, Office docs, folders, images, and audio.
+- **Reproducible** — runtime dependencies are pinned to known-good versions.
+
+It also serves as an open testbed for **self-learning AI agents that run on the
+edge** — see [Sponsor & vision](#sponsor--vision).
+
+**Documentation**
+
+- [QUICKSTART.md](QUICKSTART.md) — install and first queries in five steps
+- [FAQ.md](FAQ.md) — privacy, offline use, file formats, requirements, cache reset
+- [VERSIONS.md](VERSIONS.md) — pinned dependency versions
+- [CHANGELOG.md](CHANGELOG.md) — version history
+
 ## Supported platforms
 
 | OS | Status |
@@ -30,7 +47,7 @@ The installer is idempotent and bootstraps **everything** on a fresh machine:
 
 - `uv` / `uvx` (auto-installed if missing)
 - LibreOffice (macOS, for DOCX/XLSX/PPTX parsing)
-- `liteparse`, `lancedb`, `model2vec`, `ladybug` (fetched via `uvx`, pinned — see [VERSIONS.md](VERSIONS.md))
+- `liteparse`, `lancedb`, `model2vec`, `ladybug` (fetched via `uvx`, pinned)
 - the Gemma model weights (downloaded into the HuggingFace hub cache)
 - a `genie` symlink on your `PATH`
 
@@ -75,8 +92,6 @@ genie --ask "key risks?" --doc big.pdf --top-k 10 --chunk-size 1500
 ```
 
 Run `genie --help` for all options plus a live dependency check.
-See **[FAQ.md](FAQ.md)** for a business-friendly overview, working examples, and
-common questions (privacy, offline use, file formats, requirements, cache reset).
 
 ### Utility commands
 
@@ -151,8 +166,7 @@ Also built on [LanceDB](https://lancedb.github.io/lancedb/),
 [LadybugDB](https://github.com/LadybugDB/ladybug) (embedded Cypher graph DB),
 [model2vec](https://github.com/MinishLab/model2vec) (the
 `minishlab/potion-retrieval-32M` embedder), and
-[liteparse](https://pypi.org/project/liteparse/). All pinned versions are listed
-in [VERSIONS.md](VERSIONS.md).
+[liteparse](https://pypi.org/project/liteparse/).
 
 Huge thanks to **[Google DeepMind](https://deepmind.google/)** for their amazing
 innovation — **TensorFlow**, **LiteRT/LiteRT-LM**, and the open, offline-capable
@@ -162,18 +176,13 @@ Special thanks to **[Prashant Rao](https://ca.linkedin.com/in/prrao87)** at
 LanceDB — a truly innovative leader from Toronto who teaches the world through
 his blog, [The Data Quarry](https://thedataquarry.com/).
 
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for the version history.
-
 ## Sponsor & vision
 
 **Gemma Genie is sponsored by [Unovie.AI](https://unovie.ai/)** as a testbed for
 **self-learning AI agents that run on the edge** — learning and improving locally,
 without the cloud. See Unovie.AI's
 [Edge AI whitepaper](https://unovie.ai/resources/edge-ai-whitepaper) for the
-overarching goals, and the [FAQ](FAQ.md) for more. Thanks to **Unovie.AI** for
-sponsoring this open project.
+overarching goals.
 
 ## About the author
 

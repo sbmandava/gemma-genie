@@ -98,8 +98,7 @@ These goals are laid out in Unovie.AI's **Edge AI whitepaper**:
 <https://unovie.ai/resources/edge-ai-whitepaper>
 
 > **Sponsored by [Unovie.AI](https://unovie.ai/)** — building toward
-> self-learning, privacy-first AI agents at the edge. Thank you for supporting
-> and sponsoring this open project.
+> self-learning, privacy-first AI agents at the edge.
 
 ---
 

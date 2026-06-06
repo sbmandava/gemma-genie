@@ -210,6 +210,29 @@ genie --ask "what changed?" --dir ~/project-docs
 
 ---
 
+### Why does the knowledge expire after a day?
+
+Both the vector cache (LanceDB) and the knowledge graph (LadybugDB) **auto-expire
+after 24 hours of being idle**, then rebuild from your files on demand.
+
+This is **intentional**. Gemma Genie is a **pilot project** exploring self-learning
+edge agents, and for that we deliberately want to **keep the ideas fresh without
+the baggage of stale, old information**:
+
+- **Freshness over accumulation.** An agent that hoards everything it ever saw
+  starts answering from outdated context. A short, rolling memory keeps responses
+  anchored to what you're actually working on now.
+- **Privacy hygiene.** Indexed content (and the entities extracted from it) doesn't
+  linger on disk indefinitely — it clears itself if you stop using it.
+- **Clean experiments.** As a testbed, we want each session to reflect current
+  data, not artifacts from last week's documents.
+
+Nothing is lost: your **original files are untouched**, and re-asking simply
+re-indexes them. You can tune or disable expiry with `GEMMA_CACHE_TTL` (seconds),
+e.g. `GEMMA_CACHE_TTL=604800` for 7 days, or clear it yourself anytime (below).
+
+---
+
 ### How do I flush the cache and start over?
 
 The caches are safe to delete — they rebuild on demand.

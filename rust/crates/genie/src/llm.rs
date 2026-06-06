@@ -5,7 +5,7 @@ use crate::backend;
 use crate::cli::Cli;
 use crate::config::Config;
 use anyhow::{Context, Result};
-use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -33,11 +33,7 @@ enum Action {
     Audio(String),
 }
 
-pub fn ask(question: &str, cfg: &Config, _cli: &Cli) -> Result<()> {
-    run(cfg, Action::Ask(build_prompt_with_stdin(question)))
-}
-
-/// Run the model on an already-built prompt (used by the RAG path).
+/// Run the model on an already-built prompt (plain ask or RAG-built prompt).
 pub fn generate(cfg: &Config, prompt: String) -> Result<()> {
     run(cfg, Action::Ask(prompt))
 }
@@ -135,18 +131,4 @@ fn run_once(argv: &[String]) -> Result<bool> {
     let _ = err_thread.join();
     let _ = child.wait();
     Ok(produced)
-}
-
-/// If stdin is piped, fold it into the prompt as the document to analyze.
-fn build_prompt_with_stdin(question: &str) -> String {
-    let stdin = std::io::stdin();
-    if stdin.is_terminal() {
-        return question.to_string();
-    }
-    let mut buf = String::new();
-    if stdin.lock().read_to_string(&mut buf).is_ok() && !buf.trim().is_empty() {
-        format!("{question}\n\nAnalyze the following input:\n\n{buf}")
-    } else {
-        question.to_string()
-    }
 }

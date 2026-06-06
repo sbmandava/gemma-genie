@@ -4,6 +4,8 @@
 
 use anyhow::Result;
 use clap::Parser;
+use std::io::IsTerminal;
+
 use genie::cli::{Cli, Command};
 use genie::config::Config;
 use genie::{doctor, graph, llm, models, rag};
@@ -42,15 +44,39 @@ fn main() -> Result<()> {
         return llm::transcribe_audio(path, &cfg, &cli);
     }
     if let Some(question) = &cli.ask {
-        // Document-grounded asks need parsing + RAG (M2/M3); plain or piped
-        // questions are answered directly by the model (M1).
+        // Document-grounded asks need parsing + RAG (M2/M3).
         if cli.doc.is_some() || cli.txt.is_some() || cli.dir.is_some() {
             return rag::ask(question, &cli, &cfg);
         }
-        return llm::ask(question, &cfg, &cli);
+        // Piped input is treated as the document to analyze.
+        if let Some(piped) = read_piped_stdin() {
+            let prompt = format!("{question}\n\nAnalyze the following input:\n\n{piped}");
+            return llm::generate(&cfg, prompt);
+        }
+        // No input: consult the indexed knowledge base (vectors) first, then
+        // fall back to a plain model answer.
+        if rag::ask_kb(question, &cfg)? {
+            return Ok(());
+        }
+        return llm::generate(&cfg, question.to_string());
     }
 
     // No action: print help.
     Cli::parse_from(["genie", "--help"]);
     Ok(())
+}
+
+/// Return piped stdin content (None if stdin is a terminal or empty).
+fn read_piped_stdin() -> Option<String> {
+    use std::io::Read;
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        return None;
+    }
+    let mut buf = String::new();
+    if stdin.lock().read_to_string(&mut buf).is_ok() && !buf.trim().is_empty() {
+        Some(buf)
+    } else {
+        None
+    }
 }

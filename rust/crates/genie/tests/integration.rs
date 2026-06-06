@@ -94,3 +94,44 @@ fn pptx_answer() {
     let s = String::from_utf8_lossy(&out.stdout);
     assert!(!s.trim().is_empty(), "empty answer");
 }
+
+#[test]
+#[ignore = "indexes a dir + runs the model; slow"]
+fn dir_kb_incremental_and_cache() {
+    // Isolated cache so we don't touch ~/.genie.
+    let cache = format!("{}/target/test-m3-cache", env!("CARGO_MANIFEST_DIR"));
+    let dir = format!("{}/target/test-m3-dir", env!("CARGO_MANIFEST_DIR"));
+    let _ = std::fs::remove_dir_all(&cache);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(format!("{dir}/apollo.txt"), "Project Apollo is owned by Jane Smith.\n").unwrap();
+    std::fs::write(format!("{dir}/zeus.md"), "Project Zeus is owned by Bob Jones.\n").unwrap();
+
+    // Index + ask over the directory.
+    let out = genie()
+        .env("GENIE_CACHE_DB", &cache)
+        .args(["--ask", "Who owns Apollo? Name only.", "--dir", &dir])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.to_lowercase().contains("jane"), "expected Jane, got: {s}");
+
+    // cache list shows exactly one (dir) table.
+    let out = genie().env("GENIE_CACHE_DB", &cache).args(["cache", "list"]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("Tables: 1"), "cache list: {s}");
+
+    // Re-index is incremental (still 1 table, 2 chunks).
+    let _ = genie()
+        .env("GENIE_CACHE_DB", &cache)
+        .args(["--ask", "x", "--dir", &dir])
+        .output()
+        .unwrap();
+    let out = genie().env("GENIE_CACHE_DB", &cache).args(["cache", "list"]).output().unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("2 chunks"), "expected 2 chunks after re-index, got: {s}");
+
+    // clear empties it.
+    let _ = genie().env("GENIE_CACHE_DB", &cache).args(["cache", "clear"]).output().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+}

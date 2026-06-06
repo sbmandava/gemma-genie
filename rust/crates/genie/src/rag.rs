@@ -1,6 +1,7 @@
-//! Retrieval: model2vec-rs embeddings + lancedb vector store. M2 = single-doc
-//! (--doc/--txt) with threshold gating + Sources footer. Directory mode and the
-//! `cache` subcommand are M3.
+//! Retrieval: model2vec-rs embeddings + lancedb vector store.
+//! M2: single-doc (--doc/--txt) with threshold gating + Sources footer.
+//! M3: directory mode (incremental), search-all (bare --ask), TTL eviction,
+//!     and the `cache` subcommand.
 
 use crate::cli::Cli;
 use crate::config::{Config, EMBED_MODEL};
@@ -8,9 +9,11 @@ use crate::llm;
 use crate::parse;
 use anyhow::{bail, Result};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use arrow_array::cast::AsArray;
 use arrow_array::types::Float32Type;
@@ -20,40 +23,85 @@ use futures::TryStreamExt;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use model2vec_rs::model::StaticModel;
 
+const TEXT_EXTS: &[&str] = &[
+    "txt", "text", "csv", "tsv", "md", "markdown", "log", "json", "yaml", "yml", "rst",
+];
+const DOC_EXTS: &[&str] = &[
+    "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "png", "jpg", "jpeg", "tiff", "tif", "bmp",
+    "gif", "webp",
+];
+
+// ===========================================================================
+// Entry points
+// ===========================================================================
+
+/// Document-grounded ask: --doc/--txt (single doc) or --dir (knowledge base).
 pub fn ask(question: &str, cli: &Cli, cfg: &Config) -> Result<()> {
-    if cli.dir.is_some() {
-        println!("genie (rust): directory mode (--dir) not yet implemented (RUST_PLAN.md M3).");
-        return Ok(());
-    }
     let rt = tokio::runtime::Runtime::new()?;
-    let (prompt, sources) = rt.block_on(prepare(question, cli, cfg))?;
+    let (prompt, sources) = if let Some(dir) = &cli.dir {
+        rt.block_on(prepare_dir(question, dir, cfg))?
+    } else {
+        rt.block_on(prepare_doc(question, cli, cfg))?
+    };
     drop(rt);
     llm::generate(cfg, prompt)?;
     print_sources(&sources);
     Ok(())
 }
 
-pub fn cache(_action: &str, _cfg: &Config) -> Result<()> {
-    println!("genie (rust): cache subcommand not yet implemented (RUST_PLAN.md M3).");
-    Ok(())
+/// Bare `--ask` with no inputs: consult the vector KB indexed in the last TTL.
+/// Returns Ok(true) if it answered from the KB, Ok(false) if there was nothing
+/// indexed (caller should fall back to a plain model answer).
+pub fn ask_kb(question: &str, cfg: &Config) -> Result<bool> {
+    if !cfg.cache_db.exists() {
+        return Ok(false);
+    }
+    let rt = tokio::runtime::Runtime::new()?;
+    let excerpts = rt.block_on(search_all(cfg, question))?;
+    drop(rt);
+    if excerpts.is_empty() {
+        return Ok(false);
+    }
+    let mut ctx = String::new();
+    let mut sources = Vec::new();
+    for (source, chunk) in &excerpts {
+        ctx.push_str(&format!("[source: {source}]\n{chunk}\n\n"));
+        if !sources.contains(source) {
+            sources.push(source.clone());
+        }
+    }
+    let prompt = format!(
+        "{question}\n\nAnswer using the document excerpts below (retrieved from the \
+         user's indexed data). Ground every claim in this evidence and pay attention \
+         to source file names.\n\nDocument excerpts:\n{ctx}"
+    );
+    llm::generate(cfg, prompt)?;
+    print_sources(&sources);
+    Ok(true)
 }
 
-/// Build the model prompt (and source list) for a --doc/--txt ask.
-async fn prepare(question: &str, cli: &Cli, cfg: &Config) -> Result<(String, Vec<String>)> {
+/// `cache [info|list|clear]`.
+pub fn cache(action: &str, cfg: &Config) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(cache_impl(action, cfg))
+}
+
+// ===========================================================================
+// Single document (M2)
+// ===========================================================================
+
+async fn prepare_doc(question: &str, cli: &Cli, cfg: &Config) -> Result<(String, Vec<String>)> {
     let path = cli
         .doc
         .as_ref()
         .or(cli.txt.as_ref())
         .ok_or_else(|| anyhow::anyhow!("no --doc/--txt path"))?;
-    let src_disp = std::fs::canonicalize(path)
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| path.to_string_lossy().into_owned());
-
+    let src_disp = abspath(path);
     let text = parse::extract(path, cli.pages.as_deref()).await?;
 
-    // Small inputs go inline; large ones go through retrieval.
     if text.len() <= cfg.rag_threshold {
-        let prompt = format!("{question}\n\nAnalyze the following document (\"{src_disp}\"):\n\n{text}");
+        let prompt =
+            format!("{question}\n\nAnalyze the following document (\"{src_disp}\"):\n\n{text}");
         return Ok((prompt, vec![src_disp]));
     }
 
@@ -61,14 +109,347 @@ async fn prepare(question: &str, cli: &Cli, cfg: &Config) -> Result<(String, Vec
         "Large input ({} chars) — retrieving relevant chunks via LanceDB...",
         text.len()
     );
-    let chunks = chunk_text(&text, cfg.chunk_size, 150);
-    let model = StaticModel::from_pretrained(EMBED_MODEL, None, None, None)
-        .map_err(|e| anyhow::anyhow!("failed to load embedder: {e}"))?;
-    let cache_key = format!("{src_disp}|{}|cs={}", file_sig(path), cfg.chunk_size);
-    let excerpts = embed_and_search(cfg, &cache_key, &src_disp, &chunks, question, &model).await?;
+    let model = load_model()?;
+    let db = connect(cfg).await?;
+    prune_expired(&db, cfg).await;
 
+    let cache_key = format!("{src_disp}|{}|cs={}", file_sig(path), cfg.chunk_size);
+    let name = table_name("doc", &cache_key);
+    let chunks = chunk_text(&text, cfg.chunk_size, 150);
+    if !db.table_names().execute().await?.contains(&name) {
+        let sig = file_sig(path);
+        add_chunks(&db, &name, &chunks, &src_disp, &sig, &model, true).await?;
+    }
+    touch(cfg, &name);
+
+    let excerpts = query_table(&db, &name, question, cfg.rag_topk, &model).await?;
+    Ok(build_prompt(question, &src_disp, excerpts))
+}
+
+// ===========================================================================
+// Directory knowledge base (M3, incremental)
+// ===========================================================================
+
+async fn prepare_dir(question: &str, dir: &Path, cfg: &Config) -> Result<(String, Vec<String>)> {
+    let dir_abs = abspath(dir);
+    eprintln!("Indexing \"{dir_abs}\" into LanceDB (incremental)...");
+    let model = load_model()?;
+    let db = connect(cfg).await?;
+    prune_expired(&db, cfg).await;
+
+    let name = table_name("dir", &dir_abs);
+    ingest_dir(&db, &name, dir, cfg, &model).await?;
+    touch(cfg, &name);
+
+    let excerpts = query_table(&db, &name, question, cfg.rag_topk, &model).await?;
+    let prompt = format!(
+        "{question}\n\nUse the following excerpts from files in \"{dir_abs}\" to answer \
+         (each excerpt is labeled with its source file):\n\n{}",
+        excerpts
+            .iter()
+            .map(|(s, c)| format!("[source: {s}]\n{c}\n"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let mut sources = Vec::new();
+    for (s, _) in &excerpts {
+        if !sources.contains(s) {
+            sources.push(s.clone());
+        }
+    }
+    Ok((prompt, sources))
+}
+
+/// Incrementally sync a directory into its LanceDB table using a sidecar
+/// source->sig map (avoids scanning the table). Re-embeds only changed/new
+/// files and drops rows for deleted ones.
+async fn ingest_dir(
+    db: &lancedb::Connection,
+    name: &str,
+    dir: &Path,
+    cfg: &Config,
+    model: &StaticModel,
+) -> Result<()> {
+    let files = walk_files(dir);
+    let mut sigs = load_sigs(cfg, name);
+
+    let exists = db.table_names().execute().await?.contains(&name.to_string());
+    let tbl = if exists {
+        Some(db.open_table(name).execute().await?)
+    } else {
+        None
+    };
+
+    let current: HashMap<String, String> = files
+        .iter()
+        .map(|f| (abspath(f), file_sig(f)))
+        .collect();
+
+    // Removed files: drop their rows.
+    let removed: Vec<String> = sigs.keys().filter(|s| !current.contains_key(*s)).cloned().collect();
+    if let Some(t) = &tbl {
+        for src in &removed {
+            let _ = t.delete(&format!("source = '{}'", sql_escape(src))).await;
+            sigs.remove(src);
+        }
+    } else {
+        for src in &removed {
+            sigs.remove(src);
+        }
+    }
+
+    // New/changed files: (re)embed.
+    let mut created = exists;
+    for f in &files {
+        let src = abspath(f);
+        let sig = file_sig(f);
+        if sigs.get(&src) == Some(&sig) {
+            continue;
+        }
+        let text = match parse::extract(f, None).await {
+            Ok(t) if !t.trim().is_empty() => t,
+            _ => continue,
+        };
+        let chunks = chunk_text(&text, cfg.chunk_size, 150);
+        if chunks.is_empty() {
+            continue;
+        }
+        if created {
+            // delete any stale rows for this source, then add
+            if let Some(t) = &tbl {
+                let _ = t.delete(&format!("source = '{}'", sql_escape(&src))).await;
+            }
+            add_chunks(db, name, &chunks, &src, &sig, model, false).await?;
+        } else {
+            add_chunks(db, name, &chunks, &src, &sig, model, true).await?;
+            created = true;
+        }
+        sigs.insert(src, sig);
+    }
+    save_sigs(cfg, name, &sigs);
+    Ok(())
+}
+
+// ===========================================================================
+// LanceDB helpers
+// ===========================================================================
+
+async fn connect(cfg: &Config) -> Result<lancedb::Connection> {
+    Ok(lancedb::connect(&cfg.cache_db.to_string_lossy()).execute().await?)
+}
+
+fn schema(dim: usize) -> Arc<Schema> {
+    Arc::new(Schema::new(vec![
+        Field::new("text", DataType::Utf8, false),
+        Field::new("source", DataType::Utf8, false),
+        Field::new("sig", DataType::Utf8, false),
+        Field::new(
+            "vector",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim as i32),
+            true,
+        ),
+    ]))
+}
+
+fn batch(chunks: &[String], src: &str, sig: &str, embs: &[Vec<f32>], dim: usize) -> Result<RecordBatch> {
+    let texts = StringArray::from(chunks.to_vec());
+    let srcs = StringArray::from(vec![src.to_string(); chunks.len()]);
+    let sigs = StringArray::from(vec![sig.to_string(); chunks.len()]);
+    let vectors = FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+        embs.iter().map(|e| Some(e.iter().map(|&x| Some(x)).collect::<Vec<_>>())),
+        dim as i32,
+    );
+    Ok(RecordBatch::try_new(
+        schema(dim),
+        vec![Arc::new(texts), Arc::new(srcs), Arc::new(sigs), Arc::new(vectors)],
+    )?)
+}
+
+/// Embed `chunks` and either create the table (first batch) or add to it.
+async fn add_chunks(
+    db: &lancedb::Connection,
+    name: &str,
+    chunks: &[String],
+    src: &str,
+    sig: &str,
+    model: &StaticModel,
+    create: bool,
+) -> Result<()> {
+    let embs = model.encode(&chunks.to_vec());
+    let dim = embs.first().map(|v| v.len()).unwrap_or(0);
+    if dim == 0 {
+        bail!("embedder returned no vectors");
+    }
+    let rb = batch(chunks, src, sig, &embs, dim)?;
+    if create {
+        db.create_table(name, rb).execute().await?;
+    } else {
+        let tbl = db.open_table(name).execute().await?;
+        tbl.add(rb).execute().await?;
+    }
+    Ok(())
+}
+
+async fn query_table(
+    db: &lancedb::Connection,
+    name: &str,
+    query: &str,
+    topk: usize,
+    model: &StaticModel,
+) -> Result<Vec<(String, String)>> {
+    if !db.table_names().execute().await?.contains(&name.to_string()) {
+        return Ok(vec![]);
+    }
+    let tbl = db.open_table(name).execute().await?;
+    let qv = model.encode_single(query);
+    let results: Vec<RecordBatch> = tbl
+        .query()
+        .limit(topk)
+        .nearest_to(qv.as_slice())?
+        .execute()
+        .await?
+        .try_collect()
+        .await?;
+    Ok(rows_to_excerpts(&results))
+}
+
+/// Search every table in the cache and return the globally top-k chunks.
+async fn search_all(cfg: &Config, query: &str) -> Result<Vec<(String, String)>> {
+    let db = connect(cfg).await?;
+    prune_expired(&db, cfg).await;
+    let model = load_model()?;
+    let qv = model.encode_single(query);
+    let mut scored: Vec<(f32, String, String)> = Vec::new();
+    for name in db.table_names().execute().await? {
+        let tbl = db.open_table(&name).execute().await?;
+        let results: Vec<RecordBatch> = match tbl
+            .query()
+            .limit(cfg.rag_topk)
+            .nearest_to(qv.as_slice())
+            .and_then(|q| Ok(q))
+        {
+            Ok(q) => q.execute().await?.try_collect().await?,
+            Err(_) => continue,
+        };
+        for rb in &results {
+            let texts = match rb.column_by_name("text") {
+                Some(c) => c.as_string::<i32>(),
+                None => continue,
+            };
+            let srcs = match rb.column_by_name("source") {
+                Some(c) => c.as_string::<i32>(),
+                None => continue,
+            };
+            let dist = rb
+                .column_by_name("_distance")
+                .map(|c| c.as_primitive::<Float32Type>().clone());
+            for i in 0..rb.num_rows() {
+                let d = dist.as_ref().map(|a| a.value(i)).unwrap_or(0.0);
+                scored.push((d, srcs.value(i).to_string(), texts.value(i).to_string()));
+            }
+        }
+        touch(cfg, &name);
+    }
+    scored.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(cfg.rag_topk);
+    Ok(scored.into_iter().map(|(_, s, t)| (s, t)).collect())
+}
+
+fn rows_to_excerpts(results: &[RecordBatch]) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for rb in results {
+        let (texts, srcs) = match (rb.column_by_name("text"), rb.column_by_name("source")) {
+            (Some(t), Some(s)) => (t.as_string::<i32>(), s.as_string::<i32>()),
+            _ => continue,
+        };
+        for i in 0..rb.num_rows() {
+            out.push((srcs.value(i).to_string(), texts.value(i).to_string()));
+        }
+    }
+    out
+}
+
+// ===========================================================================
+// cache subcommand + TTL
+// ===========================================================================
+
+async fn cache_impl(action: &str, cfg: &Config) -> Result<()> {
+    match action {
+        "clear" => {
+            if cfg.cache_db.exists() {
+                std::fs::remove_dir_all(&cfg.cache_db).ok();
+            }
+            // remove sidecar sig files
+            if let Ok(rd) = std::fs::read_dir(&cfg.genie_dir) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.extension().map(|x| x == "sigs").unwrap_or(false) {
+                        std::fs::remove_file(p).ok();
+                    }
+                }
+            }
+            let _ = std::fs::remove_file(usage_path(cfg));
+            println!("Cleared vector cache at {}", cfg.cache_db.display());
+        }
+        "list" | "info" => {
+            if !cfg.cache_db.exists() {
+                println!("No cache at {} (nothing indexed yet).", cfg.cache_db.display());
+                return Ok(());
+            }
+            let db = connect(cfg).await?;
+            let names = db.table_names().execute().await?;
+            println!("Vector cache: {}", cfg.cache_db.display());
+            println!("Tables: {}", names.len());
+            if action == "list" {
+                for n in &names {
+                    let tbl = db.open_table(n).execute().await?;
+                    let rows = tbl.count_rows(None).await.unwrap_or(0);
+                    println!("  - {n}  ({rows} chunks)");
+                }
+            }
+            println!("TTL: {}s (idle tables auto-expire)", cfg.rag_ttl);
+        }
+        other => bail!("unknown cache action '{other}' (use info|list|clear)"),
+    }
+    Ok(())
+}
+
+/// Drop tables idle longer than the TTL.
+async fn prune_expired(db: &lancedb::Connection, cfg: &Config) {
+    let usage = load_usage(cfg);
+    let now = now_secs();
+    let mut changed = false;
+    let mut usage = usage;
+    if let Ok(names) = db.table_names().execute().await {
+        for n in names {
+            if let Some(&last) = usage.get(&n) {
+                if now.saturating_sub(last) > cfg.rag_ttl {
+                    let _ = db.drop_table(&n, &[]).await;
+                    let _ = std::fs::remove_file(cfg.genie_dir.join(format!("{n}.sigs")));
+                    usage.remove(&n);
+                    changed = true;
+                }
+            }
+        }
+    }
+    if changed {
+        save_usage(cfg, &usage);
+    }
+}
+
+fn touch(cfg: &Config, name: &str) {
+    let mut usage = load_usage(cfg);
+    usage.insert(name.to_string(), now_secs());
+    save_usage(cfg, &usage);
+}
+
+// ===========================================================================
+// Small helpers
+// ===========================================================================
+
+fn build_prompt(question: &str, src_disp: &str, excerpts: Vec<(String, String)>) -> (String, Vec<String>) {
     let mut ctx = String::new();
-    let mut sources: Vec<String> = Vec::new();
+    let mut sources = Vec::new();
     for (source, chunk) in &excerpts {
         ctx.push_str(&format!("[source: {source}]\n{chunk}\n\n"));
         if !sources.contains(source) {
@@ -77,84 +458,12 @@ async fn prepare(question: &str, cli: &Cli, cfg: &Config) -> Result<(String, Vec
     }
     let prompt =
         format!("{question}\n\nUse the following excerpts from \"{src_disp}\" to answer:\n\n{ctx}");
-    Ok((prompt, sources))
+    (prompt, sources)
 }
 
-/// Embed chunks into a per-document LanceDB table (reused if it already exists)
-/// and return the top-k nearest chunks to the query.
-async fn embed_and_search(
-    cfg: &Config,
-    cache_key: &str,
-    src_disp: &str,
-    chunks: &[String],
-    query: &str,
-    model: &StaticModel,
-) -> Result<Vec<(String, String)>> {
-    let uri = cfg.cache_db.to_string_lossy().into_owned();
-    let db = lancedb::connect(&uri).execute().await?;
-    let name = table_name(cache_key);
-
-    let existing = db.table_names().execute().await?;
-    let tbl = if existing.contains(&name) {
-        db.open_table(&name).execute().await?
-    } else {
-        let embs = model.encode(&chunks.to_vec());
-        let dim = embs.first().map(|v| v.len()).unwrap_or(0);
-        if dim == 0 {
-            bail!("embedder returned no vectors");
-        }
-        let batch = build_batch(chunks, src_disp, &embs, dim)?;
-        db.create_table(&name, batch).execute().await?
-    };
-
-    let qv = model.encode_single(query);
-    let results: Vec<RecordBatch> = tbl
-        .query()
-        .limit(cfg.rag_topk)
-        .nearest_to(qv.as_slice())?
-        .execute()
-        .await?
-        .try_collect()
-        .await?;
-
-    let mut out = Vec::new();
-    for rb in &results {
-        let texts = rb
-            .column_by_name("text")
-            .map(|c| c.as_string::<i32>())
-            .ok_or_else(|| anyhow::anyhow!("missing text column"))?;
-        let srcs = rb
-            .column_by_name("source")
-            .map(|c| c.as_string::<i32>())
-            .ok_or_else(|| anyhow::anyhow!("missing source column"))?;
-        for i in 0..rb.num_rows() {
-            out.push((srcs.value(i).to_string(), texts.value(i).to_string()));
-        }
-    }
-    Ok(out)
-}
-
-fn build_batch(chunks: &[String], src: &str, embs: &[Vec<f32>], dim: usize) -> Result<RecordBatch> {
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("text", DataType::Utf8, false),
-        Field::new("source", DataType::Utf8, false),
-        Field::new(
-            "vector",
-            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim as i32),
-            true,
-        ),
-    ]));
-    let texts = StringArray::from(chunks.to_vec());
-    let srcs = StringArray::from(vec![src.to_string(); chunks.len()]);
-    let vectors = FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
-        embs.iter()
-            .map(|e| Some(e.iter().map(|&x| Some(x)).collect::<Vec<_>>())),
-        dim as i32,
-    );
-    Ok(RecordBatch::try_new(
-        schema,
-        vec![Arc::new(texts), Arc::new(srcs), Arc::new(vectors)],
-    )?)
+fn load_model() -> Result<StaticModel> {
+    StaticModel::from_pretrained(EMBED_MODEL, None, None, None)
+        .map_err(|e| anyhow::anyhow!("failed to load embedder: {e}"))
 }
 
 /// Overlapping char-window chunks (trimmed); paragraph-aware enough for retrieval.
@@ -183,10 +492,39 @@ pub fn chunk_text(text: &str, max_chars: usize, overlap: usize) -> Vec<String> {
     out
 }
 
-fn table_name(key: &str) -> String {
+fn walk_files(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let rd = match std::fs::read_dir(&d) {
+            Ok(rd) => rd,
+            Err(_) => continue,
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if let Some(ext) = p.extension().and_then(|x| x.to_str()) {
+                let ext = ext.to_lowercase();
+                if TEXT_EXTS.contains(&ext.as_str()) || DOC_EXTS.contains(&ext.as_str()) {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn abspath(p: &Path) -> String {
+    std::fs::canonicalize(p)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| p.to_string_lossy().into_owned())
+}
+
+fn table_name(prefix: &str, key: &str) -> String {
     let mut h = DefaultHasher::new();
     key.hash(&mut h);
-    format!("doc_{:016x}", h.finish())
+    format!("{prefix}_{:016x}", h.finish())
 }
 
 fn file_sig(path: &Path) -> String {
@@ -195,13 +533,17 @@ fn file_sig(path: &Path) -> String {
             let mtime = m
                 .modified()
                 .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
             format!("{}-{}", m.len(), mtime)
         }
         Err(_) => "0".to_string(),
     }
+}
+
+fn sql_escape(s: &str) -> String {
+    s.replace('\'', "''")
 }
 
 fn print_sources(sources: &[String]) {
@@ -212,4 +554,56 @@ fn print_sources(sources: &[String]) {
     for s in sources {
         println!("  - {s}");
     }
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+// --- tiny line-based persistence (avoids a serde dep) ---
+
+fn usage_path(cfg: &Config) -> PathBuf {
+    cfg.genie_dir.join("cache-usage.txt")
+}
+
+fn load_usage(cfg: &Config) -> HashMap<String, u64> {
+    let mut m = HashMap::new();
+    if let Ok(s) = std::fs::read_to_string(usage_path(cfg)) {
+        for line in s.lines() {
+            if let Some((n, t)) = line.split_once('\t') {
+                if let Ok(t) = t.parse::<u64>() {
+                    m.insert(n.to_string(), t);
+                }
+            }
+        }
+    }
+    m
+}
+
+fn save_usage(cfg: &Config, m: &HashMap<String, u64>) {
+    let _ = std::fs::create_dir_all(&cfg.genie_dir);
+    let body: String = m.iter().map(|(n, t)| format!("{n}\t{t}\n")).collect();
+    let _ = std::fs::write(usage_path(cfg), body);
+}
+
+fn sigs_path(cfg: &Config, name: &str) -> PathBuf {
+    cfg.genie_dir.join(format!("{name}.sigs"))
+}
+
+fn load_sigs(cfg: &Config, name: &str) -> HashMap<String, String> {
+    let mut m = HashMap::new();
+    if let Ok(s) = std::fs::read_to_string(sigs_path(cfg, name)) {
+        for line in s.lines() {
+            if let Some((sig, src)) = line.split_once('\t') {
+                m.insert(src.to_string(), sig.to_string());
+            }
+        }
+    }
+    m
+}
+
+fn save_sigs(cfg: &Config, name: &str, m: &HashMap<String, String>) {
+    let _ = std::fs::create_dir_all(&cfg.genie_dir);
+    let body: String = m.iter().map(|(src, sig)| format!("{sig}\t{src}\n")).collect();
+    let _ = std::fs::write(sigs_path(cfg, name), body);
 }

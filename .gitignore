@@ -6,6 +6,20 @@ __pycache__/
 # Rust build artifacts (any target/ dir)
 target/
 
+# Prebuilt / compiled binaries — the repo holds SOURCE ONLY. Developers run
+# `cargo build`; end users get these from GitHub Releases. Never commit them.
+genie-*-linux*
+genie-*-macos
+genie-*-windows*
+genie-bootstrap-*
+SHA256SUMS
+*.exe
+*.so
+*.dylib
+*.a
+*.rlib
+*.o
+
 # Local-only working docs (not published)
 /specs/
 /CLAUDE.md

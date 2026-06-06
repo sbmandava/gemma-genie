@@ -26,6 +26,16 @@ edge** — see [Sponsor & vision](#sponsor--vision).
 - [FAQ.md](FAQ.md) — privacy, offline use, file formats, requirements, cache reset
 - [VERSIONS.md](VERSIONS.md) — pinned dependency versions
 - [CHANGELOG.md](CHANGELOG.md) — version history
+- [rust/README.md](rust/README.md) — the single-binary **Rust rewrite** (in progress)
+
+## Repository layout
+
+The shipping implementation and a from-scratch rewrite live side by side:
+
+| Path | What |
+|------|------|
+| [`python/`](python/) | the **shipping** implementation — bash `genie` + Python helpers (`genie_rag.py`, `genie_graph.py`) run via `uvx`, and `install.sh`. This is what the installer below sets up. |
+| [`rust/`](rust/) | the **single-binary Rust rewrite** — same CLI/behaviour, no Python/`uvx` at runtime (`lancedb` + `model2vec-rs` + `liteparse` + `lbug`, with litert-lm subprocessed). Builds for Linux/macOS today; see [rust/README.md](rust/README.md). |
 
 ## Supported platforms
 

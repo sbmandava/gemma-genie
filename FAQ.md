@@ -29,6 +29,33 @@ sends them anywhere.
 
 ---
 
+## What is the overarching goal of this project?
+
+Gemma Genie is **sponsored by [Unovie.AI](https://unovie.ai/)** as a public
+**testbed for a bigger idea**: that **self-learning AI agents can run on the
+edge** — on your own laptop or device — and **get better over time** by learning
+from the data and interactions they encounter locally, *without ever sending
+anything to the cloud*.
+
+This project demonstrates the core building blocks of such an agent:
+
+- **On-device reasoning** with Google's Gemma 4 models via LiteRT-LM,
+- a **local vector memory** (LanceDB) that remembers what it has read, and
+- a **local knowledge graph** (LadybugDB) that captures how entities relate,
+
+so the system can **accumulate, correlate, and reuse knowledge privately** and
+improve as it sees more of your documents. It's an early, practical step toward
+edge agents that **observe, remember, and learn** — entirely on-device.
+
+These goals are laid out in Unovie.AI's **Edge AI whitepaper**:
+<https://unovie.ai/resources/edge-ai-whitepaper>
+
+> **Sponsored by [Unovie.AI](https://unovie.ai/)** — building toward
+> self-learning, privacy-first AI agents at the edge. Thank you for supporting
+> and sponsoring this open project.
+
+---
+
 ## Why the answers are better: built-in Vector search + Knowledge Graph
 
 A language model on its own can only "see" what fits in a single prompt and

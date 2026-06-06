@@ -151,3 +151,12 @@ Also built on [LanceDB](https://lancedb.github.io/lancedb/),
 [LadybugDB](https://github.com/LadybugDB/ladybug) (embedded Cypher graph DB),
 [model2vec](https://github.com/MinishLab/model2vec), and
 [liteparse](https://pypi.org/project/liteparse/).
+
+## Sponsor & vision
+
+**Gemma Genie is sponsored by [Unovie.AI](https://unovie.ai/)** as a testbed for
+**self-learning AI agents that run on the edge** — learning and improving locally,
+without the cloud. See Unovie.AI's
+[Edge AI whitepaper](https://unovie.ai/resources/edge-ai-whitepaper) for the
+overarching goals, and the [FAQ](FAQ.md) for more. Thanks to **Unovie.AI** for
+sponsoring this open project.

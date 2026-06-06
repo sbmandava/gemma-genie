@@ -44,7 +44,7 @@ usage() {
 Usage: $(basename "$0") [--model e2b|e4b] [--txt PATH | --doc PATH | --dir PATH] (--ask "QUESTION" | --image PATH | --audio PATH)
 
 Options:
-  --model e2b|e4b    Select model variant (default: e2b; e4b when --txt/--doc/--dir is used)
+  --model e2b|e4b    Select model variant (default: e4b; pass e2b for a faster, lighter run)
   --ask "QUESTION"   Run text prompt (combine with --txt/--doc/--dir to analyze files)
   --txt PATH         Attach a text/CSV file's contents to the --ask prompt
   --doc PATH         Extract a document's text (PDF/DOCX/XLSX/PPTX/image via
@@ -209,7 +209,7 @@ resolve_backend() {
     printf '%s' "$b"
 }
 
-model_variant="e2b"
+model_variant="e4b"   # default to the stronger model; override with --model e2b
 model_explicit=false
 action=""
 arg=""
@@ -327,13 +327,6 @@ STDIN_TEXT=""
 if [[ "$action" == "--ask" && $inputs -eq 0 && ! -t 0 ]]; then
     STDIN_TEXT="$(cat)"
     [[ -n "$STDIN_TEXT" ]] && from_stdin=1
-fi
-
-# Q&A (any --ask) reasons over retrieved context (files, stdin, or the indexed
-# knowledge base), so default to the stronger e4b model unless the user picked
-# one explicitly. --image/--audio keep the default e2b.
-if [[ "$action" == "--ask" && "$model_explicit" == false ]]; then
-    model_variant="e4b"
 fi
 
 # Models live in the HuggingFace hub cache (~/.cache/huggingface/hub). If the

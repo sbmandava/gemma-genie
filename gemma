@@ -33,7 +33,7 @@ RAG_THRESHOLD_CHARS="${GEMMA_RAG_THRESHOLD:-14000}"   # ~3500 tokens
 RAG_TOPK="${GEMMA_RAG_TOPK:-15}"
 RAG_TTL="${GEMMA_CACHE_TTL:-86400}"   # evict cached tables idle >24h
 CHUNK_SIZE="${GEMMA_CHUNK_SIZE:-}"    # chars per chunk (empty = helper default)
-VERSION="0.2.0"
+VERSION="2.0.1"
 
 # All models (Gemma weights + the model2vec embedder) live in the HuggingFace
 # hub cache: ${HF_HOME:-$HOME/.cache/huggingface}/hub

@@ -127,11 +127,43 @@ check_deps() {
 
     printf '  %-9s %s\n' "[note]" "liteparse, litert-lm, lancedb, model2vec, ladybug auto-install via uvx on first use"
 
-    local be
-    if [[ -n "${GENIE_BACKEND:-}" ]]; then be="$GENIE_BACKEND (forced via GENIE_BACKEND)"
-    elif [[ -s "$BACKEND_CACHE" ]]; then be="$(cat "$BACKEND_CACHE") (auto-detected)"
-    else be="not detected yet — run a query once"; fi
-    printf '  %-9s %s\n' "[info]" "compute backend: $be"
+    # Report the backend genie will actually use right now, and — crucially —
+    # don't just trust a cached "gpu": actually run a tiny generation on the GPU
+    # with litert-lm to confirm it works, falling back to CPU (and correcting the
+    # cache) if it doesn't. Needs the model downloaded and uvx available to probe.
+    local raw src forced=0
+    if [[ -n "${GENIE_BACKEND:-}" ]]; then
+        raw="$GENIE_BACKEND"; src="forced via GENIE_BACKEND"; forced=1
+    elif [[ -s "$BACKEND_CACHE" ]]; then
+        raw="$(cat "$BACKEND_CACHE")"; src="cached"
+    else
+        raw=""; src=""
+    fi
+
+    setup_litert_run
+    local can_probe=0
+    [[ -n "$MODEL_PATH" ]] && command -v uvx >/dev/null 2>&1 && can_probe=1
+
+    if [[ -z "$raw" ]]; then
+        # Never decided before — detect now if we can, otherwise defer.
+        if [[ $can_probe -eq 1 ]]; then ensure_uvx; raw="$(resolve_backend)"; src="auto-detected just now"
+        else raw="unknown"; src="will auto-detect on first query"; fi
+    elif [[ "$raw" == "gpu" && $can_probe -eq 1 ]]; then
+        # Verify the cached/forced GPU choice really runs.
+        ensure_uvx
+        if verify_gpu; then
+            src="$src, verified working with litert-lm"
+        elif [[ $forced -eq 1 ]]; then
+            src="forced via GENIE_BACKEND — WARNING: GPU did not run with litert-lm"
+        else
+            raw="cpu"; src="GPU did not run with litert-lm — fell back to CPU"
+            printf '%s' cpu > "$BACKEND_CACHE" 2>/dev/null || true
+        fi
+    elif [[ "$raw" == "gpu" ]]; then
+        src="$src (model not downloaded yet — not verified)"
+    fi
+    local be; be="$(printf '%s' "$raw" | tr '[:lower:]' '[:upper:]')"
+    printf '  %-9s %s\n' "[info]" "compute backend: $be ($src)"
     printf '  %-9s %s\n' "[info]" "default model: $(resolve_default_model) (system RAM: $(detect_total_gb)GB; override with --model / GENIE_MODEL)"
 
     echo
@@ -381,6 +413,22 @@ run_llm() {
         | grep --line-buffered -vE "$LITERT_NOISE_RE" || true
 }
 
+# Actually run a tiny generation on the GPU with litert-lm. Returns 0 only if the
+# GPU backend genuinely works end-to-end, non-zero otherwise (no GPU, driver/
+# OpenCL issue, etc.). Requires LITERT_RUN to be set (call setup_litert_run first).
+#
+# Notes:
+#  - --max-num-tokens budgets input+output, so it must comfortably exceed the
+#    prompt length; too small (e.g. 8) makes litert reject the prompt as "too
+#    long" — not a GPU failure. 64 matches the install-time probe.
+#  - The CLI can exit 0 even when generation failed (it prints "An error
+#    occurred"), so we check the output too rather than trusting the exit code.
+verify_gpu() {
+    local out
+    out="$("${LITERT_RUN[@]}" --backend=gpu --max-num-tokens 64 --prompt "ok" 2>/dev/null)" || return 1
+    [[ -n "$out" && "$out" != *"An error occurred"* ]]
+}
+
 # Pick the compute backend: honor GENIE_BACKEND, else use the cached choice,
 # else probe the GPU once (fall back to CPU if it fails) and cache the result.
 resolve_backend() {
@@ -388,13 +436,31 @@ resolve_backend() {
     if [[ -s "$BACKEND_CACHE" ]]; then cat "$BACKEND_CACHE"; return; fi
     local b="cpu"
     echo "Detecting compute backend (one-time)..." >&2
-    if "${LITERT_RUN[@]}" --backend=gpu --max-num-tokens 64 --prompt "ok" >/dev/null 2>&1; then
-        b="gpu"
-    fi
+    if verify_gpu; then b="gpu"; fi
     mkdir -p "$(dirname "$BACKEND_CACHE")"
     printf '%s' "$b" > "$BACKEND_CACHE"
     echo "Using $b backend (cached in $BACKEND_CACHE)." >&2
     printf '%s' "$b"
+}
+
+# Resolve the model file in the HF cache and build the LITERT_RUN command into
+# globals (HF_REPO, MODEL_FILE, MODEL_PATH, LITERT_RUN). MODEL_PATH is empty when
+# the weights aren't downloaded yet. Safe to call before BACKEND is known.
+setup_litert_run() {
+    case "$model_variant" in
+        e2b) HF_REPO="litert-community/gemma-4-E2B-it-litert-lm"; MODEL_FILE="gemma-4-E2B-it.litertlm" ;;
+        e4b) HF_REPO="litert-community/gemma-4-E4B-it-litert-lm"; MODEL_FILE="gemma-4-E4B-it.litertlm" ;;
+    esac
+    MODEL_SNAPS="$HF_HOME/hub/models--${HF_REPO//\//--}/snapshots"
+    # `find` exits non-zero when the snapshots dir doesn't exist yet (model not
+    # downloaded); the `|| true` keeps that from tripping `set -e` (MODEL_PATH
+    # is then empty, which the caller handles).
+    MODEL_PATH="$(find "$MODEL_SNAPS" -name "$MODEL_FILE" 2>/dev/null | head -1 || true)"
+    if [[ -n "$MODEL_PATH" && -e "$MODEL_PATH" ]]; then
+        LITERT_RUN=(uvx "litert-lm@${LITERT_VERSION}" run "$MODEL_PATH")
+    else
+        LITERT_RUN=(uvx "litert-lm@${LITERT_VERSION}" run --from-huggingface-repo "$HF_REPO" "$MODEL_FILE")
+    fi
 }
 
 model_variant="$(resolve_default_model)"   # RAM-based default; override with --model
@@ -525,17 +591,7 @@ fi
 # Models live in the HuggingFace hub cache (~/.cache/huggingface/hub). If the
 # file is already cached we run it directly from that path — no network check,
 # no "Downloading..." message. Only the first run (cache miss) pulls from HF.
-case "$model_variant" in
-    e2b) HF_REPO="litert-community/gemma-4-E2B-it-litert-lm"; MODEL_FILE="gemma-4-E2B-it.litertlm" ;;
-    e4b) HF_REPO="litert-community/gemma-4-E4B-it-litert-lm"; MODEL_FILE="gemma-4-E4B-it.litertlm" ;;
-esac
-MODEL_SNAPS="$HF_HOME/hub/models--${HF_REPO//\//--}/snapshots"
-MODEL_PATH="$(find "$MODEL_SNAPS" -name "$MODEL_FILE" 2>/dev/null | head -1)"
-if [[ -n "$MODEL_PATH" && -e "$MODEL_PATH" ]]; then
-    LITERT_RUN=(uvx "litert-lm@${LITERT_VERSION}" run "$MODEL_PATH")
-else
-    LITERT_RUN=(uvx "litert-lm@${LITERT_VERSION}" run --from-huggingface-repo "$HF_REPO" "$MODEL_FILE")
-fi
+setup_litert_run
 
 ensure_uvx  # install uv on demand if it's missing
 BACKEND="$(resolve_backend)"  # gpu, or cpu if the GPU backend isn't available

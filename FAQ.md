@@ -29,6 +29,26 @@ sends them anywhere.
 
 ---
 
+## Why Genie — why not Alexa or Copilot?
+
+Because they answer to someone else. **Alexa and Copilot are cloud services** —
+they have no real powers of their own; every request travels to their provider's
+servers, and they're ultimately built to keep that provider (and its per-token
+meter) happy. Your data is what flows through them.
+
+**Genie has exactly one owner: you.** It runs entirely on your laptop and exists
+to empower you with the data *already sitting on your machine*. It can:
+
+- **Listen to audio** you give it (`--audio`),
+- **Read your files and entire folders** (`--txt` / `--doc` / `--dir`),
+- **Look at images and screenshots** and help you decipher them (`--image`),
+
+…and answer — **without sending anything to anyone else.** No cloud overlords,
+no account, no telemetry, no meter running. The intelligence works for you, on
+your terms, with your data staying yours.
+
+---
+
 ## What is the overarching goal of this project?
 
 Gemma Genie is **sponsored by [Unovie.AI](https://unovie.ai/)** as a public

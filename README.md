@@ -51,11 +51,18 @@ GPU acceleration is used when available, with automatic fallback to CPU.
 
 ## Install
 
-By default this installs the **Rust single-binary** build (no Python at runtime):
+By default this installs the **Rust single-binary `genie` CLI**:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/install.sh | bash
 ```
+
+> The `genie` CLI is native Rust — document parsing, embedding, RAG, and the
+> correlation graph run in-process with **no Python**. It still uses `uv`/`uvx` to
+> run the **litert-lm inference engine** at runtime, unless a native `litert-lm`
+> binary is on your `PATH` or the binary is built with `--features ffi` (in-process
+> inference). The default install therefore installs `uv` and uses it to run the
+> model. (The bash + Python build, `--python`, uses `uv` for everything.)
 
 Prefer the **bash + Python** implementation? Add `--python`:
 

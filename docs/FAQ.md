@@ -302,11 +302,14 @@ works great — but for a security-first, edge-first agent, we're rewriting it a
   classes of bugs (buffer overflows, use-after-free, data races) at compile time.
   For a tool meant to run on confidential, regulated, and air-gapped data, a
   hardened core is the right foundation.
-- **Faster, leaner, better.** One native binary means **no Python runtime, no
-  `uv`/`pip` at runtime, faster startup, and a smaller footprint** — exactly what
-  you want on a laptop or phone. Several of our dependencies (LanceDB, liteparse,
-  LadybugDB, model2vec) are *already Rust at the core*, so going native removes
-  layers rather than adding them.
+- **Faster, leaner, better.** One native binary means **no Python for parsing,
+  embedding, RAG, or the graph, faster startup, and a smaller footprint** — exactly
+  what you want on a laptop or phone. Several of our dependencies (LanceDB,
+  liteparse, LadybugDB, model2vec) are *already Rust at the core*, so going native
+  removes layers rather than adding them. (The one remaining piece is the
+  **litert-lm inference engine**, which today's binary still runs via `uv` unless a
+  native `litert-lm` is on `PATH` or it's built with `--features ffi` for in-process
+  inference — eliminating that last dependency is on the roadmap.)
 - **Safeguard against supply-chain attacks.** A compiled binary with **pinned,
   vendored, auditable dependencies** is a far smaller attack surface than pulling
   dozens of transitive Python packages from the network on each run. Fewer moving

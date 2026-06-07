@@ -6,8 +6,8 @@ Everything runs **on-device** — no cloud, no API keys.
 ## A. Install
 
 One command bootstraps everything. **By default it installs the Rust
-single-binary build** (no Python at runtime) plus the Gemma model weights, the
-embedder, and a `genie` symlink on your `PATH`:
+single-binary `genie` CLI** plus the Gemma model weights, the embedder, and a
+`genie` symlink on your `PATH`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/install.sh | bash
@@ -16,6 +16,12 @@ curl -fsSL https://raw.githubusercontent.com/sbmandava/gemma-genie/main/install.
 The installer is idempotent — re-run it any time to repair an install. First run
 downloads several GB of model weights (network needed once); after that Genie
 works fully offline.
+
+> The `genie` CLI itself is native Rust — parsing, embedding, RAG, and the graph
+> run in-process with no Python. It still uses `uv`/`uvx` to run the **litert-lm
+> inference engine**, unless a native `litert-lm` binary is on your `PATH` or you
+> build with `--features ffi` (in-process inference). So the default install does
+> pull in `uv` at install time and uses it at runtime for the model.
 
 ### Prefer the bash + Python build?
 
